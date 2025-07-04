@@ -6,6 +6,8 @@ The ACMG Variant Classification Assistant is a robust, user-friendly tool for cl
 
 **License:** This project is licensed under the MIT License. See LICENSE file for details.
 
+Download the EXE file containing `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
+
 ## ⚙️ Key Features
 - Implements ACMG/AMP 2015 and 2023 guidelines, including optional PP5/BP6 and enhanced de novo (PS2_Very_Strong) criteria.
 - Supports all major variant types: missense, nonsense, frameshift, splice, synonymous, and more.
