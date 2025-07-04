@@ -100,6 +100,4 @@ For in silico and molecular analysis methodology, see:
 ## 👤 Contact
 - **Author**: Can Sevilmiş  
 - **Affiliation**: Undergraduate Student, Molecular Biology and Genetics, Bahçeşehir University; Intern, ACU-RARE, Acıbadem University  
-- **Email**: can.sevilmis@bahcesehir.edu.tr  
-- **ORCID**: 0000-0002-9180-1924  
 - **LinkedIn**: [cansevilmiss](https://www.linkedin.com/in/cansevilmiss/)
