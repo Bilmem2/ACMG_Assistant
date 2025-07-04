@@ -6,7 +6,7 @@ The ACMG Variant Classification Assistant is a robust, user-friendly tool for cl
 
 **License:** This project is licensed under the MIT License. See LICENSE file for details.
 
-Download the EXE file  `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
+Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
 
 ## ⚙️ Key Features
 - Implements ACMG/AMP 2015 and 2023 guidelines, including optional PP5/BP6 and enhanced de novo (PS2_Very_Strong) criteria.
@@ -99,5 +99,4 @@ For in silico and molecular analysis methodology, see:
 
 ## 👤 Contact
 - **Author**: Can Sevilmiş  
-- **Affiliation**: Undergraduate Student, Molecular Biology and Genetics, Bahçeşehir University; Intern, ACU-RARE, Acıbadem University  
 - **LinkedIn**: [cansevilmiss](https://www.linkedin.com/in/cansevilmiss/)
