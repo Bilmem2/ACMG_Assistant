@@ -1,6 +1,6 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**Last Updated:** July 4, 2025
+**Last Updated:** July 5, 2025
 
 The ACMG Variant Classification Assistant is a robust, user-friendly tool for classifying genetic variants according to the ACMG/AMP 2015 and 2023 guidelines. It is designed for clinical geneticists, bioinformaticians, researchers, and students, and is distributed as a portable Windows executable (`.exe`) that requires no Python installation or as a Python script for cross-platform use. The tool guides users through all required data entry, integrates population and in silico data, and applies advanced statistical frameworks (including a VAMPP-score-like metascore) for evidence-based, standardized variant classification. **All in silico scores are entered manually by the user; there is no local Excel or dataset dependency.**
 
