@@ -39,30 +39,25 @@ The ACMG Variant Classification Assistant is a robust, user-friendly tool for cl
     ```bash
     pip install requests scipy numpy
     ```
-  - Run the `acmg_degerlendirme.py` script:
-    ```bash
-    python src/acmg_degerlendirme.py
-    ```
 - Internet connection (required for Ensembl and ClinVar API calls; optional for test mode).
 
 ### Installation (Windows Executable)
-1. Download the ZIP file containing `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
-2. Extract the ZIP contents to a folder (e.g., `C:\ACMG_Classifier`).
-3. Double-click `acmg_assessor.exe` to launch the command-line interface.
+1. Download the EXE file containing `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
+2. Double-click `acmg_assessor.exe` to launch the command-line interface.
 
 ### Installation (Python Script)
-1. Download the `acmg_degerlendirme.py` file from the repository: [GitHub Repo](https://github.com/Bilmem2/acmg_assistant).
+1. Download the `acmg_assistant.py` file from the repository: [GitHub Repo](https://github.com/Bilmem2/acmg_assistant).
 2. Install dependencies:
    ```bash
    pip install requests scipy numpy
    ```
 3. Run the script:
    ```bash
-   python src/acmg_degerlendirme.py
+   python src/acmg_assistant.py
    ```
 
 ### Usage
-1. Launch the tool (`acmg_assessor.exe` or `python src/acmg_degerlendirme.py`) and follow the interactive prompts.
+1. Launch the tool (`acmg_assessor.exe` or `python src/acmg_assistant.py`) and follow the interactive prompts.
 2. Enter the required information:
    - **Basic Information**: Gene, chromosome, position, reference/alternate alleles, cDNA/protein changes, VEP consequence.
    - **Population Data**: Allele frequency (e.g., gnomAD), subpopulation frequencies, disease prevalence.
