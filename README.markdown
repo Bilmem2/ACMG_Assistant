@@ -6,7 +6,7 @@ The ACMG Variant Classification Assistant is a robust, user-friendly tool for cl
 
 **License:** This project is licensed under the MIT License. See LICENSE file for details.
 
-Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
+Download the ZIP file  `acmg_assistant.zip` [HERE]().
 
 ## ⚙️ Key Features
 - Implements ACMG/AMP 2015 and 2023 guidelines, including optional PP5/BP6 and enhanced de novo (PS2_Very_Strong) criteria.
@@ -14,10 +14,10 @@ Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/
 - Integrates in silico predictors: REVEL, CADD, SIFT, AlphaMissense, MetaRNN, ClinPred, BayesDel, MutationTaster, PolyPhen-2, and others.
 - **All in silico scores must be entered manually by the user. No local Excel or dataset search, and no automatic in silico score retrieval.** Use resources like Varsome for reference.
 - Automatically retrieves chromosome information (Ensembl API) and ClinVar status (with caching for speed).
-- Advanced statistical analyses: Fisher’s Exact Test for case-control data, Kruskal-Wallis test for in silico score differentiation, and a VAMPP-score-like metascore for missense variants.
+- Advanced statistical analyses: Fisher’s Exact Test for case-control data and a VAMPP-score-like metascore for missense variants.
 - Step-by-step command-line prompts with input validation, error handling, and clear English instructions.
 - Identifies missing or incomplete data and suggests resources (Varsome, ClinVar, Orphanet, PubMed) for further investigation.
-- Saves detailed results to `variant_classification_log.txt`, including classification, applied criteria, and suggestions for missing data.
+- Saves detailed results to `variant_classification_report.txt`, including classification, applied criteria, and suggestions for missing data.
 - Test mode with sample data for rapid demonstration or educational use.
 - Fully portable: runs as a standalone `.exe` for Windows or as a Python script for all platforms, no installation or local data files required.
 
@@ -34,7 +34,7 @@ Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/
 - **Windows Users**:
   - Windows OS (the `.exe` version is for Windows only).
   - Internet connection (required for Ensembl and ClinVar API calls; optional for test mode).
-  - **Download**: Get `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
+  - **Download**: Get `acmg_assistant.zip` [here]().
 - **macOS/Linux or Python Users**:
   - Python 3.x must be installed ([python.org](https://www.python.org/downloads/)).
   - Required dependencies:
@@ -44,8 +44,8 @@ Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/
 - Internet connection (required for Ensembl and ClinVar API calls; optional for test mode).
 
 ### Installation (Windows Executable)
-1. Download the EXE file containing `acmg_assessor.exe` [here](https://drive.google.com/file/d/13V3_4VOpsijEbzTjVLOMfDGaBl0xdRjf/view?usp=sharing).
-2. Double-click `acmg_assessor.exe` to launch the command-line interface.
+1. Download the file `acmg_assistant.zip` and extract it.
+2. Double-click `acmg_assistant.exe` to launch the command-line interface.
 
 ### Installation (Python Script)
 1. Download the `acmg_assistant.py` file from the repository: [GitHub Repo](https://github.com/Bilmem2/acmg_assistant).
@@ -59,7 +59,7 @@ Download the EXE file  `acmg_assessor.exe` [HERE](https://drive.google.com/file/
    ```
 
 ### Usage
-1. Launch the tool (`acmg_assessor.exe` or `python src/acmg_assistant.py`) and follow the interactive prompts.
+1. Launch the tool (`acmg_assistant.exe` or `python src/acmg_assistant.py`) and follow the interactive prompts.
 2. Enter the required information:
    - **Basic Information**: Gene, chromosome, position, reference/alternate alleles, cDNA/protein changes, VEP consequence.
    - **Population Data**: Allele frequency (e.g., gnomAD), subpopulation frequencies, disease prevalence.
@@ -87,7 +87,7 @@ This tool is for research and educational purposes only. Clinical variant interp
 - Improve performance with asynchronous API calls.
 
 ## 📚 Citation & References
-This tool uses a VAMPP-score-like metascore approach for in silico pathogenicity prediction, inspired by the original VAMPP-score framework. If you use this tool, the VAMPP-score, or any component of our statistical framework in your work, please cite the original VAMPP-score publication:
+This tool uses a VAMPP-score-like metascore approach for in silico pathogenicity prediction, inspired by the original VAMPP-score framework. If you use this tool, the VAMPP-score, or any component of their statistical framework in your work, please cite the original VAMPP-score publication:
 
 > Eylul Aydin, Berk Ergun, Ozlem Akgun-Dogan, Yasemin Alanay, Ozden Hatirnaz Ng, Ozkan Ozdemir. "A New Era in Missense Variant Analysis: Statistical Insights and the Introduction of VAMPP-Score for Pathogenicity Assessment." *bioRxiv* (2024.07.11.602867). [DOI: 10.1101/2024.07.11.602867](https://doi.org/10.1101/2024.07.11.602867)
 
