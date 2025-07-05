@@ -6,7 +6,7 @@ The ACMG Variant Classification Assistant is a robust, user-friendly tool for cl
 
 **License:** This project is licensed under the MIT License. See LICENSE file for details.
 
-Download the ZIP file  `acmg_assistant.zip` [HERE]().
+Download the ZIP file  `acmg_assistant.zip` [HERE](https://drive.google.com/file/d/1eULPnAUPsFhEQ4CLvK9ddM48EC_8SJve/view?usp=drive_link).
 
 ## ⚙️ Key Features
 - Implements ACMG/AMP 2015 and 2023 guidelines, including optional PP5/BP6 and enhanced de novo (PS2_Very_Strong) criteria.
@@ -34,7 +34,7 @@ Download the ZIP file  `acmg_assistant.zip` [HERE]().
 - **Windows Users**:
   - Windows OS (the `.exe` version is for Windows only).
   - Internet connection (required for Ensembl and ClinVar API calls; optional for test mode).
-  - **Download**: Get `acmg_assistant.zip` [here]().
+  - **Download**: Get `acmg_assistant.zip` [HERE](https://drive.google.com/file/d/1eULPnAUPsFhEQ4CLvK9ddM48EC_8SJve/view?usp=drive_link).
 - **macOS/Linux or Python Users**:
   - Python 3.x must be installed ([python.org](https://www.python.org/downloads/)).
   - Required dependencies:
