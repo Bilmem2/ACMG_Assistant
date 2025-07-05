@@ -39,7 +39,7 @@ Download the ZIP file  `acmg_assistant.zip` [HERE](https://drive.google.com/file
   - Python 3.x must be installed ([python.org](https://www.python.org/downloads/)).
   - Required dependencies:
     ```bash
-    pip install requests scipy numpy
+    pip install requests scipy numpy colorama
     ```
 - Internet connection (required for Ensembl and ClinVar API calls; optional for test mode).
 
@@ -51,7 +51,7 @@ Download the ZIP file  `acmg_assistant.zip` [HERE](https://drive.google.com/file
 1. Download the `acmg_assistant.py` file from the repository: [GitHub Repo](https://github.com/Bilmem2/acmg_assistant).
 2. Install dependencies:
    ```bash
-   pip install requests scipy numpy
+   pip install requests scipy numpy colorama
    ```
 3. Run the script:
    ```bash
