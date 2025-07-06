@@ -5,7 +5,7 @@
 
 ## 🚀 **Quick Start - Download Executable**
 
-> **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/drive/folders/1emkHcTlxgjH6G-2Yl4wQQnKi5Wsip4IY?usp=drive_link)**  
+> **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/file/d/1UvbirCNOYR3S_p5m0dVSWeo59rGHkIUu/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
