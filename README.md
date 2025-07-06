@@ -156,3 +156,5 @@ For in silico and molecular analysis methodology, see:
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file.
+
+# ACMG_Assistant
