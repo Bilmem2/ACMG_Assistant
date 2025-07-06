@@ -17,37 +17,29 @@ A comprehensive tool for classifying genetic variants according to ACMG/AMP 2015
 
 ### Standalone Executable (Recommended)
 ```bash
-# Download and extract ACMG_Assistant.zip
-# Run: ACMG_Assistant.exe
+# Download from Google Drive: 
+# https://drive.google.com/file/d/1UvbirCNOYR3S_p5m0dVSWeo59rGHkIUu/view?usp=sharing
+# Extract ACMG_Assistant_Portable.zip and run: ACMG_Assistant.exe
 ```
 
 ### Python Installation
 ```bash
-git clone https://github.com/Bilmem2/acmg-assessor.git
-cd acmg-assessor
+git clone https://github.com/Bilmem2/ACMG_Assistant.git
+cd ACMG_Assistant
 pip install -r requirements.txt
-python acmg_assistant.py
+python src/acmg_assistant.py
 ```
 
 ### Command Options
 ```bash
-# Normal mode
-acmg_assistant.exe                    # Executable
-python acmg_assistant.py              # Python
+# Executable (Windows)
+ACMG_Assistant.exe                        # Normal mode
+ACMG_Assistant.exe --acmg-2023           # ACMG 2023 guidelines
 
-# ACMG 2023 guidelines
-acmg_assistant.exe --acmg-2023
-python acmg_assistant.py --acmg-2023
-
-# Test mode (Python only)
-python acmg_assistant.py --test
-```
-
-## 🔧 Building Executable
-
-```bash
-pip install -r requirements_build.txt
-python build_executable.py
+# Python script
+python src/acmg_assistant.py              # Normal mode
+python src/acmg_assistant.py --acmg-2023  # ACMG 2023 guidelines
+python src/acmg_assistant.py --test       # Test mode (Python only)
 ```
 
 ## 📊 In Silico Predictors
@@ -63,36 +55,33 @@ python build_executable.py
 ## 🧪 Test Cases
 
 ```bash
-python test_camta1.py                    # CAMTA1 variant
-python test_comprehensive_scenarios.py  # Multiple scenarios
-python test_vus_scenarios.py            # VUS classification
+# Example test (to be added)
+python examples/test_example.py
 ```
 
 ## 🏗️ Project Structure
 
 ```
-acmg_assessor/
-├── acmg_assistant.py              # Main application entry point
-├── build_executable.py            # PyInstaller build script
+ACMG_Assistant/
+├── src/
+│   ├── acmg_assistant.py          # Main application entry point
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── acmg_classifier.py     # Main classification engine
+│   │   ├── evidence_evaluator.py  # Evidence scoring logic
+│   │   └── variant_data.py        # Variant data structures
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── api_client.py          # ClinVar/Ensembl API integrations
+│   │   ├── input_handler.py       # User input processing
+│   │   ├── report_generator.py    # Classification report output
+│   │   └── validators.py          # Input validation functions
+│   └── config/
+│       ├── __init__.py
+│       └── constants.py           # ACMG criteria thresholds, predictor configs
 ├── requirements.txt               # Python dependencies
-├── requirements_build.txt         # Build-specific dependencies
-├── config/
-│   ├── __init__.py
-│   └── constants.py              # ACMG criteria thresholds, predictor configs
-├── core/
-│   ├── __init__.py
-│   ├── acmg_classifier.py        # Main classification engine
-│   ├── evidence_evaluator.py     # Evidence scoring logic
-│   └── variant_data.py           # Variant data structures
-├── utils/
-│   ├── __init__.py
-│   ├── api_client.py             # ClinVar/Ensembl API integrations
-│   ├── input_handler.py          # User input processing
-│   ├── report_generator.py       # Classification report output
-│   └── validators.py             # Input validation functions
-└── tests/
-    ├── test_*.py                 # Comprehensive test suites
-    └── __pycache__/              # Python bytecode cache
+├── README.md                      # Documentation
+└── LICENSE                        # MIT License
 ```
 
 ## 📈 ACMG Criteria Implementation & Algorithm
@@ -136,7 +125,7 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **Internet Required**: For API calls (ClinVar, Ensembl) and database queries
 - **Test Mode**: Available only in Python installation, not in standalone executable
 
-##   Citation & References
+## 📚 Citation & References
 This tool uses a VAMPP-score-like metascore approach for in silico pathogenicity prediction, inspired by the original VAMPP-score framework. If you use this tool, the VAMPP-score, or any component of their statistical framework in your work, please cite the original VAMPP-score publication:
 
 > Eylul Aydin, Berk Ergun, Ozlem Akgun-Dogan, Yasemin Alanay, Ozden Hatirnaz Ng, Ozkan Ozdemir. "A New Era in Missense Variant Analysis: Statistical Insights and the Introduction of VAMPP-Score for Pathogenicity Assessment." *bioRxiv* (2024.07.11.602867). [DOI: 10.1101/2024.07.11.602867](https://doi.org/10.1101/2024.07.11.602867)
@@ -156,5 +145,3 @@ For in silico and molecular analysis methodology, see:
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file.
-
-# ACMG_Assistant
