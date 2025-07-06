@@ -52,12 +52,6 @@ python src/acmg_assistant.py --test       # Test mode (Python only)
 
 **Score Sources**: Varsome, ClinVar, dbNSFP (manual entry required)
 
-## 🧪 Test Cases
-
-```bash
-# Example test (to be added)
-python examples/test_example.py
-```
 
 ## 🏗️ Project Structure
 
@@ -140,7 +134,6 @@ For in silico and molecular analysis methodology, see:
 
 - **Author**: Can Sevilmiş
 - **LinkedIn**: [cansevilmiss](https://linkedin.com/in/cansevilmiss)
-- **GitHub**: [Bilmem2](https://github.com/Bilmem2)
 
 ## 📄 License
 
