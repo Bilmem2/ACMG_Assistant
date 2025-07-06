@@ -1,0 +1,19 @@
+# Build Requirements for Executable Creation
+# =========================================
+
+# Core dependencies (already in requirements.txt)
+requests>=2.31.0
+scipy>=1.10.0
+numpy>=1.24.0
+colorama>=0.4.6
+
+# Additional dependencies for PyInstaller
+pyinstaller>=5.13.0
+pyinstaller-hooks-contrib>=2023.6
+
+# Optional: For smaller executable size
+# upx>=4.0.0  # UPX packer (requires manual installation, not a pip package)
+
+# Development dependencies (optional)
+pytest>=7.4.0
+black>=23.0.0
