@@ -3,7 +3,7 @@
 **ACMG/AMP Variant Classification with Statistical Framework**  
 *Last Updated: July 2025*
 
-## 🚀 **Quick Start - Download Executable**
+## **Quick Start - Download Exe Here**
 
 > **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/file/d/1UvbirCNOYR3S_p5m0dVSWeo59rGHkIUu/view?usp=sharing)**  
 > 
