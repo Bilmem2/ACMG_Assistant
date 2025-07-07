@@ -1,11 +1,11 @@
-# 🧬 ACMG Variant Classification Assistant
+# 🧬 ACMG Variant Classification Assistant v2.0.0
 
-**ACMG/AMP Variant Classification with Statistical Framework**  
-*Last Updated: July 2025*
+**Advanced ACMG/AMP Variant Classification with Enhanced Statistical Framework**  
+*Version 2.0.0 - Last Updated: July 8, 2025*
 
 ## **Quick Start**
 
-> **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/file/d/1UvbirCNOYR3S_p5m0dVSWeo59rGHkIUu/view?usp=sharing)**  
+> **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/file/d/1oLF4rjBc9KeH5qYgSShKQoVgEWimtDDv/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -14,7 +14,8 @@
 
 ---
 
-A comprehensive tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features VAMPP-score implementation, comprehensive in silico predictor integration, and evidence evaluation algorithms.
+A comprehensive, robust tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features enhanced VAMPP-score implementation, 50+ in silico predictor integration, advanced evidence evaluation algorithms, and comprehensive error handling for clinical-grade reliability.
+
 
 ## ⚙️ Key Features
 
@@ -119,26 +120,22 @@ This algorithm integrates **50+ computational prediction tools** across multiple
 ## 🏗️ Project Structure
 
 ```
-acmg_assessor/
-├── acmg_assistant.py              # Main application entry point
-├── build_executable.py            # PyInstaller build script
-├── requirements.txt               # Python dependencies
-├── requirements_build.txt         # Build-specific dependencies
+src/
+├── acmg_assistant.py          # Main application entry point  
 ├── config/
 │   ├── __init__.py
-│   └── constants.py              # ACMG criteria thresholds, predictor configs
+│   └── constants.py           # ACMG criteria thresholds, predictor configs
 ├── core/
 │   ├── __init__.py
-│   ├── acmg_classifier.py        # Main classification engine
-│   ├── evidence_evaluator.py     # Evidence scoring logic
-│   └── variant_data.py           # Variant data structures
-├── utils/
+│   ├── acmg_classifier.py     # Main classification engine
+│   ├── evidence_evaluator.py  # Evidence scoring logic
+│   └── variant_data.py        # Variant data structures
+└── utils/
     ├── __init__.py
-    ├── api_client.py             # ClinVar/Ensembl API integrations
-    ├── input_handler.py          # User input processing
-    ├── report_generator.py       # Classification report output
-    └── validators.py             # Input validation functions
-
+    ├── api_client.py          # ClinVar/Ensembl API integrations
+    ├── input_handler.py       # User input processing
+    ├── report_generator.py    # Classification report output
+    └── validators.py          # Input validation functions
 ```
 
 ## 📈 ACMG Criteria Implementation & Algorithm
@@ -203,4 +200,5 @@ For in silico and molecular analysis methodology, see:
 ## 👤 Contact
 
 - **Author**: Can Sevilmiş
+- **Email**: cansevilmiss@gmail.com
 - **LinkedIn**: [cansevilmiss](https://linkedin.com/in/cansevilmiss)
