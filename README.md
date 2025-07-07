@@ -63,7 +63,7 @@ python build_executable_new.py
 ## 📊 Latest Release & Version History
 
 For version history, release notes, and previous versions, visit:
-**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
+**[GitHub Releases]([https://github.com/Bilmem2/acmg-assessor/releases](https://github.com/Bilmem2/ACMG_Assistant/releases))**
 
 Each release includes:
 - Detailed changelog and new features
