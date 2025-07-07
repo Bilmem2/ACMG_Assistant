@@ -19,7 +19,7 @@ A comprehensive tool for classifying genetic variants according to ACMG/AMP 2015
 ## ⚙️ Key Features
 
 - **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with PP5/BP6 and PS2_Very_Strong
-- **30+ In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, PrimateAI, ESM1b, SpliceAI, MMSplice
+- **50+ In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS
 - **VAMPP-Score Integration**: Metascore with weighted predictor combination
 - **API Integration**: ClinVar and Ensembl with intelligent caching
 - **Statistical Framework**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
@@ -63,13 +63,57 @@ python build_executable.py
 
 ## 📊 In Silico Predictors
 
-**Primary Metascores**: REVEL, CADD, AlphaMissense, MetaRNN, ClinPred, BayesDel  
-**High Priority**: VEST4, PrimateAI, ESM1b, PROVEAN  
-**Conservation**: PhyloP (100/30/17-way), GERP++  
-**Splice**: SpliceAI, MMSplice, Ada, RF, dbscSNV  
-**Individual**: SIFT, PolyPhen-2, MutationTaster, FATHMM
+This algorithm integrates **50+ computational prediction tools** across multiple categories for comprehensive variant pathogenicity assessment:
 
-**Score Sources**: Varsome, ClinVar, dbNSFP (manual entry required)
+### 🎯 **Primary Metascores & Ensemble Methods**
+- **REVEL** - Rare Exome Variant Ensemble Learner
+- **CADD** - Combined Annotation Dependent Depletion  
+- **AlphaMissense** - DeepMind's protein structure-based predictor
+- **MetaRNN** - Recurrent neural network metapredictor
+- **ClinPred** - Clinical significance predictor
+- **BayesDel** - Bayesian deleteriousness score
+- **MetaSVM/MetaLR** - SVM/Logistic regression ensemble methods
+
+### 🧬 **Missense Variant Predictors**
+- **SIFT** - Sorting Intolerant From Tolerant
+- **PolyPhen-2** - Polymorphism Phenotyping v2 (HDiv/HVar)
+- **PROVEAN** - Protein Variation Effect Analyzer
+- **VEST4** - Variant Effect Scoring Tool v4
+- **ESM1b** - Evolutionary Scale Modeling (protein language model)
+- **MutationTaster** - Disease-causing potential predictor
+- **FATHMM** - Functional Analysis through Hidden Markov Models
+- **MutationAssessor** - Functional impact assessment
+- **MutPred** - Pathogenicity prediction with structural features
+- **LRT** - Likelihood Ratio Test
+
+### 🧮 **Conservation & Evolutionary Analysis**
+- **PhyloP** - Multiple alignments (100/30/17-way vertebrates/mammals/primates)
+- **phastCons** - Phylogenetic conservation (100/30/17-way)
+- **GERP++** - Genomic Evolutionary Rate Profiling
+- **SiPhy** - Site-specific phylogenetic analysis
+
+### ✂️ **Splice Site Prediction**
+- **SpliceAI** - Deep learning splice predictor (AG/AL/DG/DL scores)
+- **Ada** - Adaptive boosting splice predictor
+- **RF** - Random Forest splice predictor
+
+### 🔬 **Functional & Regulatory Predictors**
+- **FITCONS** - Functional information content (multiple cell types)
+- **Combined Metascore** - Custom VAMPP-like weighted combination
+
+### 📈 **VAMPP-Score Integration**
+- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
+- **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
+- **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
+- **Conservation Analysis** - Multi-species phylogenetic conservation scoring
+
+### 📚 **Data Sources & Integration**
+- **Varsome** - Comprehensive variant annotation platform
+- **ClinVar** - NCBI clinical significance database
+- **dbNSFP** - Database of human non-synonymous SNPs
+- **Manual Entry** - Custom predictor score input interface
+
+> **Note**: All predictor scores require manual entry - no automatic database retrieval is performed to ensure data accuracy and user control.
 
 
 ## 🏗️ Project Structure
@@ -89,14 +133,12 @@ acmg_assessor/
 │   ├── evidence_evaluator.py     # Evidence scoring logic
 │   └── variant_data.py           # Variant data structures
 ├── utils/
-│   ├── __init__.py
-│   ├── api_client.py             # ClinVar/Ensembl API integrations
-│   ├── input_handler.py          # User input processing
-│   ├── report_generator.py       # Classification report output
-│   └── validators.py             # Input validation functions
-└── tests/
-    ├── test_*.py                 # Comprehensive test suites
-    └── __pycache__/              # Python bytecode cache
+    ├── __init__.py
+    ├── api_client.py             # ClinVar/Ensembl API integrations
+    ├── input_handler.py          # User input processing
+    ├── report_generator.py       # Classification report output
+    └── validators.py             # Input validation functions
+
 ```
 
 ## 📈 ACMG Criteria Implementation & Algorithm
@@ -124,7 +166,7 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **BP1-7**: Comprehensive computational and frequency-based evidence
 
 ### Special Algorithm Features
-- **VAMPP-Score Integration**: Metascore combining 30+ predictors for PP3/BP4
+- **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
 - **Gene-Specific PM2**: Custom population frequency thresholds per gene
 - **Statistical PS4**: Fisher's Exact Test for case-control prevalence analysis
 - **Conservation Analysis**: Multi-species phylogenetic conservation scoring
@@ -141,6 +183,13 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **Test Mode**: Available only in Python installation, not in standalone executable
 
 ##   Citation & References
+
+**If you use this algorithm in your research or clinical pipeline, please cite:**
+
+[https://doi.org/10.5281/zenodo.15831866](https://doi.org/10.5281/zenodo.15831866)
+
+---
+
 This tool uses a VAMPP-score-like metascore approach for in silico pathogenicity prediction, inspired by the original VAMPP-score framework. If you use this tool, the VAMPP-score, or any component of their statistical framework in your work, please cite the original VAMPP-score publication:
 
 > Eylul Aydin, Berk Ergun, Ozlem Akgun-Dogan, Yasemin Alanay, Ozden Hatirnaz Ng, Ozkan Ozdemir. "A New Era in Missense Variant Analysis: Statistical Insights and the Introduction of VAMPP-Score for Pathogenicity Assessment." *bioRxiv* (2024.07.11.602867). [DOI: 10.1101/2024.07.11.602867](https://doi.org/10.1101/2024.07.11.602867)
