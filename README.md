@@ -1,4 +1,4 @@
-# 🧬 ACMG Variant Classification Assistant v2.0.0
+# 🧬 ACMG Variant Classification Assistant
 
 **Advanced ACMG/AMP Variant Classification with Enhanced Statistical Framework**  
 *Version 2.0.0 - Last Updated: July 8, 2025*
