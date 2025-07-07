@@ -1,11 +1,10 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**Advanced ACMG/AMP Variant Classification with Enhanced Statistical Framework**  
-*Version 2.0.0 - Last Updated: July 8, 2025*
+**Advanced ACMG/AMP Variant Classification with Enhanced Statistical Framework**
 
 ## **Quick Start**
 
-> **📥 [Download ACMG_Assistant.zip from Google Drive](https://drive.google.com/file/d/1oLF4rjBc9KeH5qYgSShKQoVgEWimtDDv/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1sadrp5-rSevHlJS0Rg9DWl99jAeYLt1K/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -16,11 +15,10 @@
 
 A comprehensive, robust tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features enhanced VAMPP-score implementation, 50+ in silico predictor integration, advanced evidence evaluation algorithms, and comprehensive error handling for clinical-grade reliability.
 
-
 ## ⚙️ Key Features
 
 - **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with PP5/BP6 and PS2_Very_Strong
-- **50+ In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS
+- **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS
 - **VAMPP-Score Integration**: Metascore with weighted predictor combination
 - **API Integration**: ClinVar and Ensembl with intelligent caching
 - **Statistical Framework**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
@@ -36,8 +34,8 @@ A comprehensive, robust tool for classifying genetic variants according to ACMG/
 ### Python Installation
 ```bash
 git clone https://github.com/Bilmem2/acmg-assessor.git
-cd acmg-assessor
-pip install -r requirements.txt
+cd acmg-assessor/src
+pip install -r ../requirements.txt
 python acmg_assistant.py
 ```
 
@@ -45,7 +43,7 @@ python acmg_assistant.py
 ```bash
 # Normal mode
 acmg_assistant.exe                    # Executable
-python acmg_assistant.py              # Python
+python acmg_assistant.py              # Python (from src/ directory)
 
 # ACMG 2023 guidelines
 acmg_assistant.exe --acmg-2023
@@ -59,8 +57,19 @@ python acmg_assistant.py --test
 
 ```bash
 pip install -r requirements_build.txt
-python build_executable.py
+python build_executable_new.py
 ```
+
+## 📊 Latest Release & Version History
+
+For version history, release notes, and previous versions, visit:
+**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
+
+Each release includes:
+- Detailed changelog and new features
+- Standalone executable downloads
+- Source code archives
+- Installation instructions
 
 ## 📊 In Silico Predictors
 
