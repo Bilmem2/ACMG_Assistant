@@ -13,7 +13,7 @@
 
 ---
 
-A comprehensive, robust tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features enhanced VAMPP-score implementation, 50+ in silico predictor integration, advanced evidence evaluation algorithms, and comprehensive error handling for clinical-grade reliability.
+A comprehensive, robust tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features enhanced VAMPP-score implementation, various in silico predictor integration, advanced evidence evaluation algorithms, and comprehensive error handling for clinical-grade reliability.
 
 ## ⚙️ Key Features
 
