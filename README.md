@@ -15,7 +15,8 @@
 
 ## ⚙️ Key Features
 
-- **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with precise PS2/PM6 de novo logic
+- **Complete ACMG/AMP Guidelines**: All 28 criteria (2015 & 2023) with precise PS2/PM6 de novo logic
+- **Interactive Evidence Evaluation**: User-guided literature review for PS1/PM5/PP4/PS4/PM3/BP2/BP5/BP6 criteria  
 - **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
 - **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
 - **Advanced Statistics**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
@@ -63,7 +64,6 @@ For version history, release notes, and previous versions, visit:
 **[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
 
 Each release includes:
-- Detailed changelog and new features
 - Source code archives
 
 ## 📊 In Silico Predictors
@@ -107,7 +107,7 @@ This algorithm integrates **30+ computational prediction tools** across multiple
 - **Combined Metascore** - Custom VAMPP-like weighted combination
 
 ### 📈 **VAMPP-Score Integration**
-- **Multi-Predictor Weighting** - Sophisticated combination of the predictors
+- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
 - **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
 - **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
 - **Conservation Analysis** - Multi-species phylogenetic conservation scoring
@@ -147,7 +147,7 @@ src/
 ### Core Classification Logic
 The algorithm implements a **multi-layered evidence evaluation system** that processes variants through:
 
-1. **Variant Type Detection**: Categorize variants (missense, nonsense, frameshift, splice, etc.)
+1. **Variant Type Detection**: Automatically categorizes variants (missense, nonsense, frameshift, splice, etc.)
 2. **Evidence Collection**: Gathers population, functional, computational, and segregation data
 3. **Criterion-Specific Evaluation**: Applies ACMG/AMP criteria with variant-type-specific logic
 4. **Statistical Integration**: Combines evidence using Fisher's Exact Test and prevalence thresholds
@@ -155,9 +155,11 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 
 ### ACMG/AMP Criteria Support
 
+**All 28 Criteria Fully Implemented**:
+
 **Pathogenic Evidence**:
 - **PVS1**: Null variants in haploinsufficient genes with splice prediction
-- **PS1-4**: Functional studies, segregation, prevalence analysis with statistical validation
+- **PS1-4**: Functional studies, segregation, prevalence analysis with statistical validation  
 - **PM1-6**: Domain analysis, gene-specific frequencies, computational predictions
 - **PP1-5**: Segregation support, functional confirmation, computational evidence
 
@@ -165,6 +167,9 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **BA1**: High-frequency variants with population-specific thresholds
 - **BS1-4**: Functional studies, segregation analysis, computational predictions
 - **BP1-7**: Comprehensive computational and frequency-based evidence
+
+**Interactive Criteria**: PS1, PS4, PM3, PM5, PP4, BP2, BP5, BP6 feature user-guided literature review
+**Automated Criteria**: All others use data-driven logic with manual review options
 
 ### Special Algorithm Features
 - **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
@@ -178,7 +183,7 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 **⚠️ MEDICAL DISCLAIMER**: This tool is intended for research and educational purposes only. It is **NOT** a substitute for professional medical advice, diagnosis, or treatment. Variant classifications provided by this tool should not be used for clinical decision-making without proper validation by qualified medical professionals and certified genetic counselors. Always consult with healthcare providers for clinical interpretation of genetic variants.
 
 **Important Technical Notes**:
-- **Manual Score Entry**: No automatic retrieval from databases - all predictor scores must be manually entered (at least for now)
+- **Manual Score Entry**: No automatic retrieval from databases - all predictor scores must be manually entered
 - **Research Use Only**: Not validated for direct clinical use without additional confirmation
 - **Internet Required**: For API calls (ClinVar, Ensembl) and database queries
 - **Test Mode**: Available only in Python installation, not in standalone executable
