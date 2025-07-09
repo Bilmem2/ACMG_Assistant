@@ -4,7 +4,7 @@
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1ZUmeG5GTCfPB4GomQU5AmngMVWUz_z0T/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive]()**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -16,7 +16,6 @@
 ## ⚙️ Key Features
 
 - **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with precise PS2/PM6 de novo logic
-- **AI-Powered Analysis**: Literature scanning, phenotype matching, and confidence assessment
 - **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
 - **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
 - **Advanced Statistics**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
