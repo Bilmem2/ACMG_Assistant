@@ -609,11 +609,6 @@ All algorithms, thresholds, and statistical methods are fully documented and imp
 
 ---
 
-## 13. CONTACT AND COLLABORATION
-
-
----
-
 **Document Version**: 1.0  
 **Last Updated**: July 9, 2025  
 **Total Implementation**: 28/28 ACMG/AMP Criteria (100%)  
