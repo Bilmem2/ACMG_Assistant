@@ -619,4 +619,4 @@ All algorithms, thresholds, and statistical methods are fully documented and imp
 
 ---
 
-*This technical report is provided to support transparency, reproducibility, and academic validation of automated variant classification methodologies. We encourage peer review, independent validation, and collaborative improvement of these methods for the benefit of the clinical genetics community.*
+*This technical report is provided to support transparency, reproducibility, and academic validation of automated variant classification methodologies.*
