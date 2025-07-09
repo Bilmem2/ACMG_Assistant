@@ -1,10 +1,10 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**Advanced ACMG/AMP Variant Classification with Enhanced Statistical Framework**
+**ACMG/AMP Variant Classification with Enhanced Statistical Framework**
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/16NFzcMiIBkn4fTknC8xXONuRyjrGfVFj/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1ZUmeG5GTCfPB4GomQU5AmngMVWUz_z0T/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -13,22 +13,20 @@
 
 ---
 
-A comprehensive, robust tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features enhanced VAMPP-score implementation, various in silico predictor integration, advanced evidence evaluation algorithms, and comprehensive error handling for clinical-grade reliability.
-
 ## ⚙️ Key Features
 
-- **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with PP5/BP6 and PS2_Very_Strong
-- **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS
-- **VAMPP-Score Integration**: Metascore with weighted predictor combination
-- **API Integration**: ClinVar and Ensembl with intelligent caching
-- **Statistical Framework**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
+- **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with precise PS2/PM6 de novo logic
+- **AI-Powered Analysis**: Literature scanning, phenotype matching, and confidence assessment
+- **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
+- **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
+- **Advanced Statistics**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
 
 ## 💻 Installation & Usage
 
 ### Standalone Executable (Recommended)
 ```bash
-# Download and extract ACMG_Assistant.zip
-# Run: ACMG_Assistant.exe
+# Download and extract ACMG_Assistant_v3.0.0.zip
+# Run: ACMG_Assistant_v3.0.0.exe
 ```
 
 ### Python Installation
@@ -42,11 +40,11 @@ python acmg_assistant.py
 ### Command Options
 ```bash
 # Normal mode
-acmg_assistant.exe                    # Executable
-python acmg_assistant.py              # Python (from src/ directory)
+ACMG_Assistant_v3.0.0.exe             # Executable
+python acmg_assistant.py               # Python (from src/ directory)
 
 # ACMG 2023 guidelines
-acmg_assistant.exe --acmg-2023
+ACMG_Assistant_v3.0.0.exe --acmg-2023
 python acmg_assistant.py --acmg-2023
 
 # Test mode (Python only)
@@ -63,17 +61,15 @@ python build_executable_new.py
 ## 📊 Latest Release & Version History
 
 For version history, release notes, and previous versions, visit:
-**[GitHub Releases]([https://github.com/Bilmem2/acmg-assessor/releases](https://github.com/Bilmem2/ACMG_Assistant/releases))**
+**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
 
 Each release includes:
 - Detailed changelog and new features
-- Standalone executable downloads
 - Source code archives
-- Installation instructions
 
 ## 📊 In Silico Predictors
 
-This algorithm integrates **50+ computational prediction tools** across multiple categories for comprehensive variant pathogenicity assessment:
+This algorithm integrates **30+ computational prediction tools** across multiple categories for comprehensive variant pathogenicity assessment:
 
 ### 🎯 **Primary Metascores & Ensemble Methods**
 - **REVEL** - Rare Exome Variant Ensemble Learner
@@ -112,7 +108,7 @@ This algorithm integrates **50+ computational prediction tools** across multiple
 - **Combined Metascore** - Custom VAMPP-like weighted combination
 
 ### 📈 **VAMPP-Score Integration**
-- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
+- **Multi-Predictor Weighting** - Sophisticated combination of the predictors
 - **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
 - **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
 - **Conservation Analysis** - Multi-species phylogenetic conservation scoring
@@ -152,7 +148,7 @@ src/
 ### Core Classification Logic
 The algorithm implements a **multi-layered evidence evaluation system** that processes variants through:
 
-1. **Variant Type Detection**: Automatically categorizes variants (missense, nonsense, frameshift, splice, etc.)
+1. **Variant Type Detection**: Categorize variants (missense, nonsense, frameshift, splice, etc.)
 2. **Evidence Collection**: Gathers population, functional, computational, and segregation data
 3. **Criterion-Specific Evaluation**: Applies ACMG/AMP criteria with variant-type-specific logic
 4. **Statistical Integration**: Combines evidence using Fisher's Exact Test and prevalence thresholds
@@ -183,7 +179,7 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 **⚠️ MEDICAL DISCLAIMER**: This tool is intended for research and educational purposes only. It is **NOT** a substitute for professional medical advice, diagnosis, or treatment. Variant classifications provided by this tool should not be used for clinical decision-making without proper validation by qualified medical professionals and certified genetic counselors. Always consult with healthcare providers for clinical interpretation of genetic variants.
 
 **Important Technical Notes**:
-- **Manual Score Entry**: No automatic retrieval from databases - all predictor scores must be manually entered
+- **Manual Score Entry**: No automatic retrieval from databases - all predictor scores must be manually entered (at least for now)
 - **Research Use Only**: Not validated for direct clinical use without additional confirmation
 - **Internet Required**: For API calls (ClinVar, Ensembl) and database queries
 - **Test Mode**: Available only in Python installation, not in standalone executable
