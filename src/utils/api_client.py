@@ -121,7 +121,7 @@ class APIClient:
         
         try:
             print(f"{COLORAMA_COLORS['BLUE']}🔍 Fetching chromosome info for {gene_symbol} from Ensembl...{COLORAMA_COLORS['RESET']}")
-            server = API_ENDPOINTS['ensembl']
+            server = API_ENDPOINTS['ensembl_rest']
             ext = f"/lookup/symbol/homo_sapiens/{gene_symbol}?expand=0"
             
             response = requests.get(
@@ -369,7 +369,7 @@ class APIClient:
             return cached_result
         
         try:
-            server = API_ENDPOINTS['ensembl']
+            server = API_ENDPOINTS['ensembl_rest']
             ext = f"/lookup/symbol/homo_sapiens/{gene_symbol}?expand=1"
             
             response = requests.get(

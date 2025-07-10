@@ -7,7 +7,7 @@ A comprehensive tool for classifying genetic variants according to ACMG/AMP 2015
 
 Author: Can Sevilmiş
 License: MIT
-Last Updated: July 6, 2025
+Last Updated: July 10, 2025
 
 Features:
 - ACMG/AMP 2015 and 2023 guidelines implementation
@@ -26,10 +26,6 @@ import argparse
 import json
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-from colorama import init, Fore, Back, Style
-
-# Initialize colorama for cross-platform colored output
-init(autoreset=True)
 
 # Import custom modules
 from core.variant_data import VariantData
@@ -43,8 +39,6 @@ from config.constants import (
     VERSION_INFO, COLORAMA_COLORS, SECTION_HEADERS, 
     CLASSIFICATION_COLORS, get_colored_message
 )
-from utils.report_generator import ReportGenerator
-from config.constants import *
 
 class ACMGAssistant:
     """Main ACMG Classification Assistant class."""
@@ -62,52 +56,63 @@ class ACMGAssistant:
         self.api_client = APIClient()
         self.input_handler = InputHandler(test_mode=test_mode, api_client=self.api_client)
         self.validators = Validators()
-        self.evidence_evaluator = EvidenceEvaluator(use_2023_guidelines)
+        self.evidence_evaluator = EvidenceEvaluator(use_2023_guidelines, test_mode=test_mode)
         self.classifier = ACMGClassifier(use_2023_guidelines)
-        self.report_generator = ReportGenerator()
+        
+        # Get the correct output directory for reports
+        if getattr(sys, 'frozen', False):
+            # Running as executable - use the directory where the executable is located
+            output_dir = os.path.dirname(sys.executable)
+        else:
+            # Running as script - use the project root directory (parent of src)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            output_dir = os.path.dirname(current_dir)
+        
+        self.report_generator = ReportGenerator(output_dir=output_dir)
         
         # Print welcome message
         self._print_welcome_message()
     
     def _print_welcome_message(self):
         """Print welcome message and guidelines information."""
-        print(f"\n{Fore.CYAN}{'='*80}")
-        print(f"{Fore.CYAN}{Style.BRIGHT}🧬 ACMG Variant Classification Assistant")
-        print(f"{Fore.CYAN}{'='*80}")
-        print(f"{Fore.YELLOW}Guidelines: {Fore.WHITE}{Style.BRIGHT}ACMG/AMP {'2023' if self.use_2023_guidelines else '2015'}")
-        print(f"{Fore.YELLOW}Mode: {Fore.WHITE}{Style.BRIGHT}{'Test Mode' if self.test_mode else 'Standard Mode'}")
-        print(f"{Fore.YELLOW}Date: {Fore.WHITE}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{Fore.CYAN}{'='*80}")
+        print(f"\n{COLORAMA_COLORS['CYAN']}{'='*80}")
+        print(f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}🧬 ACMG Variant Classification Assistant v{VERSION_INFO['version']}")
+        print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Guidelines: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}ACMG/AMP {'2023' if self.use_2023_guidelines else '2015'}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Mode: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}{'Test Mode' if self.test_mode else 'Standard Mode'}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Date: {COLORAMA_COLORS['WHITE']}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
+        print(f"{COLORAMA_COLORS['GREEN']}Created by: {VERSION_INFO['author']}")
         
         if not self.test_mode:
-            print(f"\n{Fore.RED}{Style.BRIGHT}⚠️  DISCLAIMER:")
-            print(f"{Fore.RED}This tool is for research and educational purposes only.")
-            print(f"{Fore.RED}Clinical variant interpretations must be validated by certified professionals.")
-            print(f"{Fore.RED}Always cross-check results with primary sources (ClinVar, Varsome).")
-            print(f"{Fore.CYAN}{'='*80}")
+            print(f"\n{COLORAMA_COLORS['RED']}{COLORAMA_COLORS['BOLD']}⚠️  DISCLAIMER:")
+            print(f"{COLORAMA_COLORS['RED']}This tool is for research and educational purposes only.")
+            print(f"{COLORAMA_COLORS['RED']}Clinical variant interpretations must be validated by certified professionals.")
+            print(f"{COLORAMA_COLORS['RED']}Always cross-check results with primary sources (ClinVar, Varsome).")
+            print(f"\n{COLORAMA_COLORS['YELLOW']}{COLORAMA_COLORS['BOLD']}📝 IMPORTANT NOTE:")
+            print(f"{COLORAMA_COLORS['YELLOW']}All in silico scores must be entered manually - no automatic retrieval.")
+            print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
     
     def run(self):
         """Main execution method."""
         while True:
             try:
                 # Collect variant data
-                print(f"\n{SECTION_HEADERS['basic_info']}")
-                print(f"{Fore.BLUE}{'-'*40}{Style.RESET_ALL}")
                 variant_data = self._collect_variant_data()
                 
                 # Evaluate evidence
                 print(f"\n{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}🔍 EVIDENCE EVALUATION{COLORAMA_COLORS['RESET']}")
-                print(f"{Fore.BLUE}{'-'*40}{Style.RESET_ALL}")
+                print(f"{COLORAMA_COLORS['BLUE']}{'-'*40}{COLORAMA_COLORS['RESET']}")
                 evidence_results = self._evaluate_evidence(variant_data)
                 
                 # Classify variant
                 print(f"\n{COLORAMA_COLORS['MAGENTA']}{COLORAMA_COLORS['BOLD']}⚖️  VARIANT CLASSIFICATION{COLORAMA_COLORS['RESET']}")
-                print(f"{Fore.BLUE}{'-'*40}{Style.RESET_ALL}")
+                print(f"{COLORAMA_COLORS['BLUE']}{'-'*40}{COLORAMA_COLORS['RESET']}")
                 classification_result = self._classify_variant(evidence_results)
                 
                 # Generate report
                 print(f"\n{SECTION_HEADERS['report_generation']}")
-                print(f"{Fore.BLUE}{'-'*40}{Style.RESET_ALL}")
+                print(f"{COLORAMA_COLORS['BLUE']}{'-'*40}{COLORAMA_COLORS['RESET']}")
                 report_path = self._generate_report(variant_data, evidence_results, classification_result)
                 
                 # Display results
@@ -120,7 +125,7 @@ class ACMGAssistant:
                     break
                     
             except KeyboardInterrupt:
-                print(f"\n\n{Fore.RED}❌ Operation cancelled by user.{Style.RESET_ALL}")
+                print(f"\n\n{COLORAMA_COLORS['RED']}❌ Operation cancelled by user.{COLORAMA_COLORS['RESET']}")
                 self._pause_before_exit()
                 sys.exit(1)
             except Exception as e:
@@ -172,9 +177,6 @@ class ACMGAssistant:
     
     def _collect_variant_data(self) -> VariantData:
         """Collect all variant data from user input."""
-        print("Please provide the following information:")
-        print("(All in silico scores must be entered manually)")
-        
         # Basic variant information
         basic_info = self.input_handler.collect_basic_info()
         
@@ -250,10 +252,8 @@ class ACMGAssistant:
         
         # Get color for classification
         if classification in CLASSIFICATION_COLORS:
-            color_info = CLASSIFICATION_COLORS[classification]
-            color = COLORAMA_COLORS[color_info[0]]
-            style = COLORAMA_COLORS[color_info[1]] if color_info[1] else ""
-            print(f"\n{color}{style}📊 FINAL CLASSIFICATION: {classification}{COLORAMA_COLORS['RESET']}")
+            color_code = CLASSIFICATION_COLORS[classification]
+            print(f"\n{color_code}📊 FINAL CLASSIFICATION: {classification}{COLORAMA_COLORS['RESET']}")
         else:
             print(f"\n{COLORAMA_COLORS['MAGENTA']}📊 FINAL CLASSIFICATION: {classification}{COLORAMA_COLORS['RESET']}")
         
@@ -317,7 +317,7 @@ Examples:
     parser.add_argument(
         '--version',
         action='version',
-        version='ACMG Assistant v1.0.0'
+        version=f'ACMG Assistant v{VERSION_INFO["version"]}'
     )
     
     args = parser.parse_args()

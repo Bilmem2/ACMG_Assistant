@@ -109,9 +109,10 @@ class InputHandler:
                 required=False
             )
             if override and override.strip():
-                if self._validate_chromosome(override.strip()):
-                    basic_info['chromosome'] = override.strip()
-                    self.print_success(f"Using manual chromosome: {override.strip()}")
+                normalized_override = self._normalize_chromosome(override.strip())
+                if self._validate_chromosome(normalized_override):
+                    basic_info['chromosome'] = normalized_override
+                    self.print_success(f"Using manual chromosome: {normalized_override}")
                 else:
                     self.print_error("Invalid chromosome format. Using automatic result.")
         else:
@@ -124,8 +125,10 @@ class InputHandler:
                 required=False
             )
             if chromosome_input and chromosome_input.strip():
-                basic_info['chromosome'] = chromosome_input.strip()
-                self.print_success(f"Using chromosome: {chromosome_input.strip()}")
+                # Normalize chromosome input
+                normalized_chr = self._normalize_chromosome(chromosome_input.strip())
+                basic_info['chromosome'] = normalized_chr
+                self.print_success(f"Using chromosome: {normalized_chr}")
             else:
                 basic_info['chromosome'] = None
                 self.print_info("Chromosome skipped - some features may be limited")
@@ -192,8 +195,8 @@ class InputHandler:
         
         variant_types = ['missense', 'nonsense', 'frameshift', 'splice', 'synonymous', 'inframe_indel', 'other']
         variant_aliases = {
-            'missense': 'miss', 'nonsense': 'non', 'frameshift': 'fs',
-            'splice': 'spl', 'synonymous': 'syn', 'inframe_indel': 'indel'
+            'miss': 'missense', 'non': 'nonsense', 'fs': 'frameshift',
+            'spl': 'splice', 'syn': 'synonymous', 'indel': 'inframe_indel'
         }
         basic_info['variant_type'] = self._prompt_choice(
             "Variant type: ",
@@ -202,28 +205,42 @@ class InputHandler:
             aliases=variant_aliases
         )
         
-        # VEP consequence
-        print(f"\n{COLORAMA_COLORS['CYAN']}📝 Variant Consequence Selection:{COLORAMA_COLORS['RESET']}")
-        print(f"{COLORAMA_COLORS['RED']}🔴 High Impact:{COLORAMA_COLORS['RESET']}")
-        print("   • frameshift_variant, stop_gained, stop_lost, start_lost")
-        print("   • splice_acceptor_variant, splice_donor_variant")
-        print(f"{COLORAMA_COLORS['YELLOW']}🟡 Moderate Impact:{COLORAMA_COLORS['RESET']}")
-        print("   • missense_variant, inframe_deletion, inframe_insertion")
-        print("   • splice_region_variant")
-        print(f"{COLORAMA_COLORS['GREEN']}🟢 Low Impact:{COLORAMA_COLORS['RESET']}")
-        print("   • synonymous_variant, start_retained_variant, stop_retained_variant")
-        print(f"{COLORAMA_COLORS['BLUE']}🔵 Modifier:{COLORAMA_COLORS['RESET']}")
-        print("   • intron_variant, 5_prime_UTR_variant, 3_prime_UTR_variant")
-        print("   • regulatory_region_variant")
-        print(f"{COLORAMA_COLORS['WHITE']}⚪ Other:{COLORAMA_COLORS['RESET']}")
-        print("   • other, unknown")
-        print(f"\n{COLORAMA_COLORS['BLUE']}💡 Type the exact consequence name or 'other' if not listed{COLORAMA_COLORS['RESET']}")
+        # Auto-map variant type to consequence
+        consequence_mapping = {
+            'missense': 'missense_variant',
+            'nonsense': 'stop_gained',
+            'frameshift': 'frameshift_variant',
+            'splice': 'splice_donor_variant',
+            'synonymous': 'synonymous_variant',
+            'inframe_indel': 'inframe_deletion'
+        }
         
-        basic_info['consequence'] = self._prompt_choice(
-            "Select variant consequence: ",
-            choices=ALL_VARIANT_CONSEQUENCES,
-            required=False
-        )
+        if basic_info['variant_type'] in consequence_mapping:
+            basic_info['consequence'] = consequence_mapping[basic_info['variant_type']]
+            print(f"{COLORAMA_COLORS['GREEN']}✅ Auto-mapped consequence: {basic_info['consequence']}{COLORAMA_COLORS['RESET']}")
+        else:
+            # Manual consequence selection for 'other' variants
+            print(f"\n{COLORAMA_COLORS['CYAN']}📝 Variant Consequence Selection:{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['RED']}🔴 High Impact:{COLORAMA_COLORS['RESET']}")
+            print("   • frameshift_variant, stop_gained, stop_lost, start_lost")
+            print("   • splice_acceptor_variant, splice_donor_variant")
+            print(f"{COLORAMA_COLORS['YELLOW']}🟡 Moderate Impact:{COLORAMA_COLORS['RESET']}")
+            print("   • missense_variant, inframe_deletion, inframe_insertion")
+            print("   • splice_region_variant")
+            print(f"{COLORAMA_COLORS['GREEN']}🟢 Low Impact:{COLORAMA_COLORS['RESET']}")
+            print("   • synonymous_variant, start_retained_variant, stop_retained_variant")
+            print(f"{COLORAMA_COLORS['BLUE']}🔵 Modifier:{COLORAMA_COLORS['RESET']}")
+            print("   • intron_variant, 5_prime_UTR_variant, 3_prime_UTR_variant")
+            print("   • regulatory_region_variant")
+            print(f"{COLORAMA_COLORS['WHITE']}⚪ Other:{COLORAMA_COLORS['RESET']}")
+            print("   • other, unknown")
+            print(f"\n{COLORAMA_COLORS['BLUE']}💡 Type the exact consequence name or 'other' if not listed{COLORAMA_COLORS['RESET']}")
+            
+            basic_info['consequence'] = self._prompt_choice(
+                "Select variant consequence: ",
+                choices=ALL_VARIANT_CONSEQUENCES,
+                required=False
+            )
         
         # ClinVar status - automatically fetch if all required data available
         if (self.api_client and basic_info.get('chromosome') and basic_info.get('position') and 
@@ -293,8 +310,8 @@ class InputHandler:
         
         clinvar_choices = ['pathogenic', 'likely_pathogenic', 'vus', 'likely_benign', 'benign', 'not_in_clinvar']
         clinvar_aliases = {
-            'pathogenic': 'path', 'likely_pathogenic': 'lpath', 'vus': 'vus',
-            'likely_benign': 'lben', 'benign': 'ben', 'not_in_clinvar': 'none'
+            'path': 'pathogenic', 'lpath': 'likely_pathogenic', 'vus': 'vus',
+            'lben': 'likely_benign', 'ben': 'benign', 'none': 'not_in_clinvar'
         }
         
         return self._prompt_choice(
@@ -437,9 +454,9 @@ class InputHandler:
             choices=['raw_score', 'ranked_score', 'skip'],
             required=False,
             aliases={
-                '1': 'raw_score', 'raw': 'raw_score', 'r': 'raw_score',
-                '2': 'ranked_score', 'ranked': 'ranked_score', 'rank': 'ranked_score',
-                '3': 'skip', 's': 'skip'
+                'raw': 'raw_score', 'r': 'raw_score', '1': 'raw_score',
+                'ranked': 'ranked_score', 'rank': 'ranked_score', '2': 'ranked_score',
+                's': 'skip', '3': 'skip'
             }
         )
         
@@ -498,6 +515,92 @@ class InputHandler:
             )
         else:
             print(f"{COLORAMA_COLORS['YELLOW']}⏭️ Skipping all PhyloP scores{COLORAMA_COLORS['RESET']}")
+        
+        # phastCons Conservation Scores
+        print("\n📊 phastCons Conservation Scores:")
+        print("   These scores measure evolutionary conservation using phylogenetic hidden Markov models")
+        print("   Ranked scores (0-1) are preferred for analysis")
+        print("   Choose ONE scoring type that will apply to all phastCons scores:")
+        print()
+        print("   1. raw_score (or 'raw', 'r') - Raw conservation scores (0-1)")
+        print("   2. ranked_score (or 'ranked', 'rank') - Ranked scores (0-1)")
+        print("   3. skip (or 's') - Skip all phastCons scores")
+        
+        # Ask once for all phastCons scores
+        phastcons_choice = self._prompt_choice(
+            "Choose phastCons scoring type for ALL scores: ",
+            choices=['raw_score', 'ranked_score', 'skip'],
+            required=False,
+            aliases={
+                '1': 'raw_score', 'raw': 'raw_score', 'r': 'raw_score',
+                '2': 'ranked_score', 'ranked': 'ranked_score', 'rank': 'ranked_score',
+                '3': 'skip', 's': 'skip'
+            }
+        )
+        
+        if phastcons_choice == 'raw_score':
+            print(f"{COLORAMA_COLORS['GREEN']}✅ Using raw phastCons scores for all{COLORAMA_COLORS['RESET']}")
+            
+            # phastCons vertebrates raw
+            insilico_data['phastcons_vert'] = self._prompt_input(
+                "phastCons vertebrates score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+            
+            # phastCons mammals raw
+            insilico_data['phastcons_mamm'] = self._prompt_input(
+                "phastCons mammals score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+            
+            # phastCons primates raw
+            insilico_data['phastcons_prim'] = self._prompt_input(
+                "phastCons primates score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+            
+        elif phastcons_choice == 'ranked_score':
+            print(f"{COLORAMA_COLORS['GREEN']}✅ Using ranked phastCons scores for all{COLORAMA_COLORS['RESET']}")
+            
+            # phastCons vertebrates ranked
+            insilico_data['phastcons_vert_ranked'] = self._prompt_input(
+                "phastCons vertebrates ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+            
+            # phastCons mammals ranked
+            insilico_data['phastcons_mamm_ranked'] = self._prompt_input(
+                "phastCons mammals ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+            
+            # phastCons primates ranked
+            insilico_data['phastcons_prim_ranked'] = self._prompt_input(
+                "phastCons primates ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        else:
+            print(f"{COLORAMA_COLORS['YELLOW']}⏭️ Skipping all phastCons scores{COLORAMA_COLORS['RESET']}")
+        
+        # SiPhy score
+        insilico_data['siphy'] = self._prompt_input(
+            "SiPhy conservation score (0-30): ",
+            validator=lambda x: self._validate_numeric_range(x, 0, 30),
+            required=False,
+            convert_type=float
+        )
         
         # AlphaMissense score (missense variants only)
         if variant_type == 'missense':
@@ -674,6 +777,126 @@ class InputHandler:
             convert_type=float
         )
         
+        # MetaSVM - choice between score and ranked score
+        print("\n📊 MetaSVM options:")
+        print("   1. Score (0-1)")
+        print("   2. Ranked score (0-1)")
+        metasvm_choice = self._prompt_choice(
+            "Choose MetaSVM type (or leave empty to skip): ",
+            choices=['score', 'ranked_score', 'skip'],
+            required=False,
+            aliases={'1': 'score', '2': 'ranked_score', 's': 'skip'}
+        )
+        
+        if metasvm_choice == 'score':
+            insilico_data['metasvm'] = self._prompt_input(
+                "MetaSVM score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        elif metasvm_choice == 'ranked_score':
+            insilico_data['metasvm_ranked'] = self._prompt_input(
+                "MetaSVM ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        
+        # MetaLR - choice between score and ranked score
+        print("\n📊 MetaLR options:")
+        print("   1. Score (0-1)")
+        print("   2. Ranked score (0-1)")
+        metalr_choice = self._prompt_choice(
+            "Choose MetaLR type (or leave empty to skip): ",
+            choices=['score', 'ranked_score', 'skip'],
+            required=False,
+            aliases={'1': 'score', '2': 'ranked_score', 's': 'skip'}
+        )
+        
+        if metalr_choice == 'score':
+            insilico_data['metalr'] = self._prompt_input(
+                "MetaLR score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        elif metalr_choice == 'ranked_score':
+            insilico_data['metalr_ranked'] = self._prompt_input(
+                "MetaLR ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        
+        # MutationAssessor
+        insilico_data['mutationassessor'] = self._prompt_input(
+            "MutationAssessor score (-5.135 to 6.49): ",
+            validator=lambda x: self._validate_numeric_range(x, -6, 7),
+            required=False,
+            convert_type=float
+        )
+        
+        # MutPred - choice between score and ranked score
+        print("\n📊 MutPred options:")
+        print("   1. Score (0-1)")
+        print("   2. Ranked score (0-1)")
+        mutpred_choice = self._prompt_choice(
+            "Choose MutPred type (or leave empty to skip): ",
+            choices=['score', 'ranked_score', 'skip'],
+            required=False,
+            aliases={'1': 'score', '2': 'ranked_score', 's': 'skip'}
+        )
+        
+        if mutpred_choice == 'score':
+            insilico_data['mutpred'] = self._prompt_input(
+                "MutPred score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        elif mutpred_choice == 'ranked_score':
+            insilico_data['mutpred_ranked'] = self._prompt_input(
+                "MutPred ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        
+        # LRT - choice between score and ranked score
+        print("\n📊 LRT (Likelihood Ratio Test) options:")
+        print("   1. Score (0-1)")
+        print("   2. Ranked score (0-1)")
+        lrt_choice = self._prompt_choice(
+            "Choose LRT type (or leave empty to skip): ",
+            choices=['score', 'ranked_score', 'skip'],
+            required=False,
+            aliases={'1': 'score', '2': 'ranked_score', 's': 'skip'}
+        )
+        
+        if lrt_choice == 'score':
+            insilico_data['lrt'] = self._prompt_input(
+                "LRT score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        elif lrt_choice == 'ranked_score':
+            insilico_data['lrt_ranked'] = self._prompt_input(
+                "LRT ranked score (0-1): ",
+                validator=self._validate_score_0_1,
+                required=False,
+                convert_type=float
+            )
+        
+        # FITCONS - Functional information content
+        insilico_data['fitcons'] = self._prompt_input(
+            "FITCONS score (0-1): ",
+            validator=self._validate_score_0_1,
+            required=False,
+            convert_type=float
+        )
+        
         # Enhanced splice prediction for relevant variants
         if variant_type in ['splice', 'intronic', 'synonymous']:
             print(f"\n{COLORAMA_COLORS['YELLOW']}✂️ ENHANCED SPLICE PREDICTION{COLORAMA_COLORS['RESET']}")
@@ -715,7 +938,7 @@ class InputHandler:
         
         inheritance_choices = ['AD', 'AR', 'XLD', 'XLR', 'MT', 'unknown']
         inheritance_aliases = {
-            'AD': 'ad', 'AR': 'ar', 'XLD': 'xld', 'XLR': 'xlr', 'MT': 'mt'
+            'ad': 'AD', 'ar': 'AR', 'xld': 'XLD', 'xlr': 'XLR', 'mt': 'MT'
         }
         genetic_data['inheritance'] = self._prompt_choice(
             "Inheritance pattern: ",
@@ -732,7 +955,7 @@ class InputHandler:
         
         zygosity_choices = ['homozygous', 'heterozygous', 'hemizygous', 'unknown']
         zygosity_aliases = {
-            'homozygous': 'hom', 'heterozygous': 'het', 'hemizygous': 'hemi'
+            'hom': 'homozygous', 'het': 'heterozygous', 'hemi': 'hemizygous'
         }
         genetic_data['zygosity'] = self._prompt_choice(
             "Zygosity: ",
@@ -781,8 +1004,8 @@ class InputHandler:
         
         segregation_choices = ['cosegregates', 'does_not_segregate', 'insufficient_data', 'not_performed']
         segregation_aliases = {
-            'cosegregates': 'coseg', 'does_not_segregate': 'noseg', 
-            'insufficient_data': 'insuf', 'not_performed': 'none'
+            'coseg': 'cosegregates', 'noseg': 'does_not_segregate', 
+            'insuf': 'insufficient_data', 'none': 'not_performed'
         }
         functional_data['segregation'] = self._prompt_choice(
             "Segregation analysis: ",
@@ -799,7 +1022,7 @@ class InputHandler:
         
         denovo_choices = ['confirmed', 'assumed', 'not_denovo', 'unknown']
         denovo_aliases = {
-            'confirmed': 'conf', 'assumed': 'assum', 'not_denovo': 'inherit'
+            'conf': 'confirmed', 'assum': 'assumed', 'inherit': 'not_denovo'
         }
         functional_data['denovo'] = self._prompt_choice(
             "De novo status: ",
@@ -816,7 +1039,7 @@ class InputHandler:
         
         functional_choices = ['damaging', 'benign', 'inconclusive', 'not_performed']
         functional_aliases = {
-            'damaging': 'dam', 'benign': 'ben', 'inconclusive': 'inc', 'not_performed': 'none'
+            'dam': 'damaging', 'ben': 'benign', 'inc': 'inconclusive', 'none': 'not_performed'
         }
         functional_data['functional_studies'] = self._prompt_choice(
             "Functional studies result: ",
@@ -833,7 +1056,7 @@ class InputHandler:
         
         phenotype_choices = ['specific_match', 'partial_match', 'no_match', 'unknown']
         phenotype_aliases = {
-            'specific_match': 'spec', 'partial_match': 'part', 'no_match': 'none'
+            'spec': 'specific_match', 'part': 'partial_match', 'none': 'no_match'
         }
         functional_data['phenotype_match'] = self._prompt_choice(
             "Phenotype match: ",
@@ -850,7 +1073,7 @@ class InputHandler:
         functional_data['case_control'] = self._prompt_choice(
             "Case-control data available? ",
             choices=['yes', 'no'],
-            aliases={'yes': 'y', 'no': 'n'},
+            aliases={'y': 'yes', 'n': 'no'},
             required=False
         )
         
@@ -971,8 +1194,15 @@ class InputHandler:
             # Create display text with aliases for short lists
             display_choices = []
             for choice in choices:
-                if aliases and choice in aliases:
-                    display_choices.append(f"{choice} ({aliases[choice]})")
+                # Find aliases for this choice
+                choice_aliases = []
+                if aliases:
+                    for alias, mapped_choice in aliases.items():
+                        if mapped_choice == choice:
+                            choice_aliases.append(alias)
+                
+                if choice_aliases:
+                    display_choices.append(f"{choice} ({', '.join(choice_aliases)})")
                 else:
                     display_choices.append(choice)
             
@@ -997,7 +1227,7 @@ class InputHandler:
                 
                 # Check aliases
                 if aliases:
-                    for choice, alias in aliases.items():
+                    for alias, choice in aliases.items():
                         if value == alias.lower():
                             return choice
                 
@@ -1010,8 +1240,15 @@ class InputHandler:
                     # Show all options for short lists
                     display_choices = []
                     for choice in choices:
-                        if aliases and choice in aliases:
-                            display_choices.append(f"{choice} ({aliases[choice]})")
+                        # Find aliases for this choice
+                        choice_aliases = []
+                        if aliases:
+                            for alias, mapped_choice in aliases.items():
+                                if mapped_choice == choice:
+                                    choice_aliases.append(alias)
+                        
+                        if choice_aliases:
+                            display_choices.append(f"{choice} ({', '.join(choice_aliases)})")
                         else:
                             display_choices.append(choice)
                     print(f"❌ Invalid choice. Please select from: {', '.join(display_choices)}")
@@ -1034,7 +1271,7 @@ class InputHandler:
         # Remove 'chr' prefix if present
         clean_value = value.upper().replace('CHR', '')
         
-        # Check if it matches the pattern
+        # Check if it matches the pattern (allow both M and MT for mitochondrial)
         valid_chromosomes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 
                            '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', 
                            '21', '22', 'X', 'Y', 'MT', 'M']
@@ -1183,3 +1420,25 @@ class InputHandler:
             return -10 <= score <= 10  # Delta logit PSI range
         except ValueError:
             return False
+    
+    def _validate_numeric_range(self, value: str, min_val: float, max_val: float) -> bool:
+        """Validate numeric value within specified range."""
+        try:
+            num_value = float(value)
+            return min_val <= num_value <= max_val
+        except ValueError:
+            return False
+    
+    def _normalize_chromosome(self, value: str) -> str:
+        """Normalize chromosome input to standard format."""
+        if not value:
+            return value
+        
+        # Remove 'chr' prefix if present and uppercase
+        clean_value = value.upper().replace('CHR', '')
+        
+        # Convert 'M' to 'MT' for mitochondrial chromosome
+        if clean_value == 'M':
+            clean_value = 'MT'
+        
+        return clean_value

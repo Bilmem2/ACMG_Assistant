@@ -77,11 +77,10 @@ class ACMGClassifier:
         }
         
         pathogenic_criteria = evidence_results.get('pathogenic_criteria', {})
-        applied_pathogenic = evidence_results.get('applied_criteria', {}).get('pathogenic', [])
+        applied_criteria = evidence_results.get('applied_criteria', {})
         
-        for criterion in applied_pathogenic:
+        for criterion, result in applied_criteria.items():
             if criterion in pathogenic_criteria:
-                result = pathogenic_criteria[criterion]
                 strength = result.get('strength', '').lower().replace(' ', '_')
                 
                 if strength == 'very_strong':
@@ -104,11 +103,10 @@ class ACMGClassifier:
         }
         
         benign_criteria = evidence_results.get('benign_criteria', {})
-        applied_benign = evidence_results.get('applied_criteria', {}).get('benign', [])
+        applied_criteria = evidence_results.get('applied_criteria', {})
         
-        for criterion in applied_benign:
+        for criterion, result in applied_criteria.items():
             if criterion in benign_criteria:
-                result = benign_criteria[criterion]
                 strength = result.get('strength', '').lower().replace(' ', '_').replace('-', '_')
                 
                 if strength == 'stand_alone':

@@ -7,12 +7,13 @@ It implements both ACMG/AMP 2015 and 2023 guidelines.
 """
 
 import numpy as np
+import math
 from typing import Dict, List, Optional, Any, Tuple
 from scipy import stats
 from config.constants import (
     EVIDENCE_WEIGHTS, GENE_SPECIFIC_THRESHOLDS, INSILICO_WEIGHTS,
-    INSILICO_THRESHOLDS, VARIANT_CONSEQUENCES, STATISTICAL_THRESHOLDS,
-    VAMPP_SCORE_THRESHOLDS
+    INSILICO_THRESHOLDS, VAMPP_SCORE_THRESHOLDS, STATISTICAL_THRESHOLDS,
+    LOF_INTOLERANT_GENES, LOF_TOLERANT_GENES
 )
 
 
@@ -25,14 +26,16 @@ class EvidenceEvaluator:
     functional studies, and inheritance patterns.
     """
     
-    def __init__(self, use_2023_guidelines: bool = False):
+    def __init__(self, use_2023_guidelines: bool = False, test_mode: bool = False):
         """
         Initialize the evidence evaluator.
         
         Args:
             use_2023_guidelines (bool): Whether to use ACMG 2023 guidelines
+            test_mode (bool): Whether to run in test mode (skip interactive prompts)
         """
         self.use_2023_guidelines = use_2023_guidelines
+        self.test_mode = test_mode
         self.applied_criteria = {}
         self.evidence_details = {}
     
@@ -162,17 +165,16 @@ class EvidenceEvaluator:
         # BP3 - In-frame indel in repeat
         benign['BP3'] = self._evaluate_bp3(variant_data)
         
-        # BP4 - Computational evidence
+        # BP4 - Computational evidence suggests no impact
         benign['BP4'] = self._evaluate_bp4(variant_data)
         
-        # BP5 - Alternate molecular basis
+        # BP5 - Variant found in case with alternate cause
         benign['BP5'] = self._evaluate_bp5(variant_data)
         
-        # BP6 - Reputable source (if enabled)
-        if self.use_2023_guidelines:
-            benign['BP6'] = self._evaluate_bp6(variant_data)
+        # BP6 - Reputable source reports benign
+        benign['BP6'] = self._evaluate_bp6(variant_data)
         
-        # BP7 - Synonymous variant
+        # BP7 - Synonymous variant with no impact
         benign['BP7'] = self._evaluate_bp7(variant_data)
         
         return benign
@@ -183,6 +185,7 @@ class EvidenceEvaluator:
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
         consequence = variant_data.basic_info.get('consequence', '').lower()
+        gene = variant_data.basic_info.get('gene', '').upper()
         
         # Check if it's a loss-of-function variant
         lof_types = ['nonsense', 'frameshift', 'splice_donor', 'splice_acceptor', 'start_lost']
@@ -190,10 +193,17 @@ class EvidenceEvaluator:
                            'splice_acceptor_variant', 'start_lost']
         
         if variant_type in lof_types or consequence in lof_consequences:
-            # TODO: Add gene-specific LOF mechanism check
-            # For now, assume LOF is a known mechanism for the gene
-            result['applies'] = True
-            result['details'] = f"Loss-of-function variant ({variant_type or consequence})"
+            # Check if gene is LOF intolerant (required for PVS1)
+            if gene in LOF_INTOLERANT_GENES:
+                result['applies'] = True
+                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF intolerant gene {gene}"
+            elif gene in LOF_TOLERANT_GENES:
+                result['applies'] = False
+                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF tolerant gene {gene} - PVS1 not applicable"
+            else:
+                # Unknown gene - conservative approach, don't apply PVS1
+                result['applies'] = False
+                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in gene {gene} with unknown LOF tolerance - manual review required"
         
         # Check for intronic variants with high SpliceAI scores (splice-altering)
         elif variant_type == 'intronic':
@@ -206,9 +216,14 @@ class EvidenceEvaluator:
             
             # If any SpliceAI score is very high (>0.5), consider it splice-altering
             if spliceai_scores and max(spliceai_scores) > 0.5:
-                result['applies'] = True
-                result['strength'] = 'Strong'  # Use PS1 strength for splice-altering variants
-                result['details'] = f"Intronic variant with high SpliceAI score (max: {max(spliceai_scores):.3f})"
+                # Check if gene is LOF intolerant
+                if gene in LOF_INTOLERANT_GENES:
+                    result['applies'] = True
+                    result['strength'] = 'Strong'  # Use PS1 strength for splice-altering variants
+                    result['details'] = f"Intronic variant with high SpliceAI score (max: {max(spliceai_scores):.3f}) in LOF intolerant gene {gene}"
+                else:
+                    result['applies'] = False
+                    result['details'] = f"Intronic variant with high SpliceAI score (max: {max(spliceai_scores):.3f}) in gene {gene} - LOF tolerance unknown"
             elif spliceai_scores and max(spliceai_scores) > 0.2:
                 result['applies'] = False
                 result['details'] = f"Intronic variant with moderate SpliceAI score (max: {max(spliceai_scores):.3f}) - consider PS1 or PM4"
@@ -221,15 +236,66 @@ class EvidenceEvaluator:
         """Evaluate PS1 - Same amino acid change as pathogenic variant."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        # This would require database lookup for known pathogenic variants
-        # at the same amino acid position
-        result['details'] = "Requires manual verification of pathogenic variants at same position"
+        gene = variant_data.basic_info.get('gene')
+        aa_change = variant_data.basic_info.get('amino_acid_change')
+        
+        if gene and aa_change:
+            if self.test_mode:
+                # Test mode: Return default result without interaction
+                result['details'] = f"Test mode: Manual literature review required for PS1 evaluation"
+                result['manual_review'] = True
+            else:
+                # Interactive mode: Ask user for literature review results
+                result = self._evaluate_ps1_interactive(variant_data, gene, aa_change)
+        else:
+            result['details'] = "Insufficient variant information for PS1 evaluation"
+        
+        return result
+    
+    def _evaluate_ps1_interactive(self, variant_data, gene, aa_change) -> Dict[str, Any]:
+        """Interactive PS1 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        print(f"\n🔍 PS1 Evaluation: {gene} {aa_change}")
+        print("─" * 50)
+        print("QUESTION: Have you found the exact same amino acid change reported as pathogenic?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • PubMed: '{gene} {aa_change} pathogenic'")
+        print(f"   • ClinVar: '{gene} {aa_change}'")
+        print(f"   • HGMD: Same amino acid change")
+        print(f"   • Literature: Functional studies on this change")
+        print()
+        print("💡 PS1 applies if the EXACT same amino acid change has been reported as pathogenic")
+        print("   with sufficient evidence in the literature.")
+        print()
+        
+        while True:
+            choice = input("PS1 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Same amino acid change {aa_change} in {gene} reported as pathogenic (PS1)"
+                print(f"✅ PS1 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No evidence found for same amino acid change {aa_change} in {gene}"
+                print(f"❌ PS1 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Evidence unclear for {aa_change} in {gene} - requires further investigation"
+                print(f"⚠️  PS1 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_ps2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS2 - De novo variant."""
+        """Evaluate PS2 - De novo variant with enhanced logic."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        # Import the new de novo assignment logic
+        # from config.constants import assign_de_novo_criteria
         
         # Try both genetic_data and functional_data for de novo status
         denovo_status = (variant_data.genetic_data.get('de_novo') or 
@@ -237,17 +303,33 @@ class EvidenceEvaluator:
                         variant_data.functional_data.get('de_novo') or
                         variant_data.functional_data.get('denovo'))
         
-        if denovo_status == 'confirmed' or denovo_status == 'yes':
+        # Get parental confirmation status
+        maternity_confirmed = variant_data.genetic_data.get('maternity_confirmed')
+        paternity_confirmed = variant_data.genetic_data.get('paternity_confirmed')
+        
+        # Mock de novo assignment logic
+        # de_novo_assignment = assign_de_novo_criteria(
+        #     denovo_status, 
+        #     maternity_confirmed, 
+        #     paternity_confirmed
+        # )
+        
+        # Apply PS2 only for confirmed de novo WITH parental testing
+        if denovo_status == 'confirmed' and maternity_confirmed and paternity_confirmed:
+            result['applies'] = True
             if self.use_2023_guidelines:
-                result['applies'] = True
                 result['strength'] = 'Very Strong'
-                result['details'] = "Confirmed de novo variant (2023 guidelines - Very Strong)"
-            else:
-                result['applies'] = True
-                result['details'] = "Confirmed de novo variant"
+            result['details'] = 'De novo variant confirmed with parental testing'
         elif denovo_status == 'assumed':
-            # This would be PM6 instead
-            result['details'] = "Assumed de novo - see PM6"
+            # For assumed de novo, use PM6 instead of PS2
+            result['applies'] = False
+            result['details'] = 'De novo assumed but not confirmed - see PM6'
+        elif denovo_status == 'confirmed' and not (maternity_confirmed and paternity_confirmed):
+            # Marked as confirmed but no parental testing - treat as assumed
+            result['applies'] = False
+            result['details'] = 'De novo confirmed but no parental testing - see PM6'
+        else:
+            result['details'] = 'No evidence of de novo variant'
         
         return result
     
@@ -268,33 +350,101 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_ps4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS4 - Case-control data."""
+        """Evaluate PS4 - The prevalence of the variant in affected individuals is significantly increased compared to the prevalence in controls."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        if variant_data.functional_data.get('case_control') == 'yes':
-            # Perform Fisher's exact test
-            cases_with = variant_data.functional_data.get('cases_with_variant', 0)
-            total_cases = variant_data.functional_data.get('total_cases', 0)
-            controls_with = variant_data.functional_data.get('controls_with_variant', 0)
-            total_controls = variant_data.functional_data.get('total_controls', 0)
-            
-            if all(x is not None for x in [cases_with, total_cases, controls_with, total_controls]):
-                p_value = self._fisher_exact_test(cases_with, total_cases, controls_with, total_controls)
-                
-                if p_value < STATISTICAL_THRESHOLDS['fisher_exact']:
-                    result['applies'] = True
-                    result['details'] = f"Significant case-control association (p={p_value:.2e})"
-                else:
-                    result['details'] = f"Non-significant case-control data (p={p_value:.3f})"
+        gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
+        
+        if gene:
+            if self.test_mode:
+                result['details'] = f"Test mode: Case-control study data not available for {gene} {variant_name}"
+                result['manual_review'] = True
+            else:
+                # Interactive evaluation for case-control data
+                result = self._evaluate_ps4_interactive(variant_data, gene, variant_name)
+        else:
+            result['details'] = "Insufficient variant information for PS4 evaluation"
+        
+        return result
+    
+    def _evaluate_ps4_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive PS4 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        print(f"\n🔍 PS4 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print("QUESTION: Is there case-control data showing significantly higher frequency in affected individuals?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • PubMed: Case-control studies for {gene}")
+        print(f"   • ClinVar: Review submitted interpretations")
+        print(f"   • GWAS studies for this condition")
+        print(f"   • Population genetics studies")
+        print()
+        print("💡 PS4 applies if variant frequency is significantly higher in affected")
+        print("   individuals compared to controls with appropriate statistical significance.")
+        print()
+        
+        while True:
+            choice = input("PS4 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Case-control data shows significant enrichment in affected individuals for {gene} (PS4)"
+                print(f"✅ PS4 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No significant case-control evidence found for {gene}"
+                print(f"❌ PS4 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Case-control data unclear or insufficient for {gene}"
+                print(f"⚠️  PS4 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_pm1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PM1 - Mutational hotspot."""
+        """Evaluate PM1 - Located in a mutational hot spot and/or critical functional domain."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
-        # This would require domain/hotspot annotation
-        result['details'] = "Requires manual assessment of mutational hotspot"
+        gene = variant_data.basic_info.get('gene')
+        aa_change = variant_data.basic_info.get('amino_acid_change')
+        
+        if gene and aa_change:
+            # Define known hotspot regions for common genes
+            hotspot_genes = {
+                'TP53': ['DNA_binding_domain', 'tetramerization_domain'],
+                'KRAS': ['GTPase_domain'],
+                'PIK3CA': ['helical_domain', 'kinase_domain'],
+                'BRAF': ['kinase_domain'],
+                'EGFR': ['kinase_domain', 'tyrosine_kinase_domain']
+            }
+            
+            if gene.upper() in hotspot_genes:
+                result['details'] = f"Gene {gene} has known hotspot regions - manual domain analysis required"
+                result['manual_review'] = True
+                result['search_recommendations'] = [
+                    f"Check if variant is in known functional domain for {gene}",
+                    f"Review protein structure and critical domains",
+                    f"Check ClinVar for clustering of pathogenic variants",
+                    f"Review literature for hotspot regions in {gene}"
+                ]
+                result['guidance'] = "PM1 applies if variant is in a mutational hotspot or critical functional domain"
+            else:
+                result['details'] = f"Manual domain analysis required for {gene}"
+                result['manual_review'] = True
+                result['search_recommendations'] = [
+                    f"Identify functional domains for {gene}",
+                    f"Check for clustering of pathogenic variants",
+                    f"Review protein structure databases",
+                    f"Check UniProt for domain annotations"
+                ]
+                result['guidance'] = "PM1 applies if variant is in a mutational hotspot or critical functional domain"
+        else:
+            result['details'] = "Insufficient variant information for PM1 evaluation"
         
         return result
     
@@ -302,58 +452,153 @@ class EvidenceEvaluator:
         """Evaluate PM2 - Absent from controls."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
-        # Get gene-specific thresholds
-        gene = variant_data.basic_info.get('gene', 'default')
-        thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        # Check population frequencies
+        pop_data = variant_data.population_data
+        gnomad_af = pop_data.get('gnomad_af')
         
-        gnomad_af = variant_data.population_data.get('gnomad_af')
-        
-        if gnomad_af is not None:
-            if gnomad_af <= thresholds['PM2']:
-                result['applies'] = True
-                result['details'] = f"Absent or very rare in gnomAD (AF={gnomad_af})"
-            else:
-                result['details'] = f"Present in gnomAD (AF={gnomad_af})"
+        # PM2 applies if variant is absent or very rare in population databases
+        if gnomad_af is None or gnomad_af == 0:
+            result['applies'] = True
+            result['details'] = "Variant absent from population databases"
+        elif gnomad_af < 0.0001:  # Very rare
+            result['applies'] = True
+            result['details'] = f"Variant very rare in population (gnomAD AF: {gnomad_af})"
         else:
-            result['details'] = "No population frequency data available"
+            result['details'] = f"Variant present in population databases (gnomAD AF: {gnomad_af})"
         
         return result
     
     def _evaluate_pm3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PM3 - In trans with pathogenic variant."""
+        """Evaluate PM3 - For recessive disorders, detected in trans with a pathogenic variant."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
-        inheritance = variant_data.genetic_data.get('inheritance')
-        compound_het = variant_data.genetic_data.get('compound_het')
+        gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
-        if inheritance == 'AR' and compound_het == 'yes':
-            # This would require assessment of the second variant
-            result['details'] = "Requires manual assessment of second variant pathogenicity"
+        if gene:
+            if self.test_mode:
+                result['details'] = f"Test mode: Trans analysis not available for {gene} {variant_name}"
+                result['manual_review'] = True
+            else:
+                # Interactive evaluation for trans analysis
+                result = self._evaluate_pm3_interactive(variant_data, gene, variant_name)
+        else:
+            result['details'] = "Insufficient variant information for PM3 evaluation"
+        
+        return result
+    
+    def _evaluate_pm3_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive PM3 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Moderate', 'details': ''}
+        
+        print(f"\n🔍 PM3 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print("QUESTION: For recessive disorders, is this variant detected in trans with a pathogenic variant?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • Check inheritance pattern for {gene}")
+        print(f"   • Review family segregation data")
+        print(f"   • Check for compound heterozygous variants")
+        print(f"   • Verify parental origin if available")
+        print()
+        print("💡 PM3 applies only for recessive disorders when variant is in trans")
+        print("   with a known pathogenic variant.")
+        print()
+        
+        while True:
+            choice = input("PM3 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Variant in trans with pathogenic variant in recessive disorder for {gene} (PM3)"
+                print(f"✅ PM3 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No trans pathogenic variant found or not recessive disorder for {gene}"
+                print(f"❌ PM3 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Trans analysis unclear or insufficient data for {gene}"
+                print(f"⚠️  PM3 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_pm4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PM4 - Protein length changes."""
+        """Evaluate PM4 - Protein length changes due to inframe indels."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
+        consequence = variant_data.basic_info.get('consequence', '').lower()
         
-        if variant_type == 'inframe_indel':
-            # Check if it's in a non-repeat region
-            result['details'] = "In-frame indel - requires assessment of repeat region"
-        elif 'stop_loss' in variant_type or 'nonstop' in variant_type:
+        # Check for inframe indels
+        if variant_type == 'inframe_indel' or 'inframe' in consequence:
             result['applies'] = True
-            result['details'] = "Stop-loss variant causing protein extension"
+            result['details'] = "Inframe indel causing protein length change"
+        elif variant_type in ['insertion', 'deletion']:
+            # Could be inframe - need to check if length is multiple of 3
+            result['details'] = "Indel variant - manual review required to determine if inframe"
+        else:
+            result['details'] = "No protein length changes detected"
         
         return result
     
     def _evaluate_pm5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PM5 - Novel missense at pathogenic residue."""
+        """Evaluate PM5 - Novel missense change at same residue as pathogenic variant."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
-        # This would require database lookup for known pathogenic variants
-        # at the same position
-        result['details'] = "Requires manual verification of pathogenic variants at same position"
+        gene = variant_data.basic_info.get('gene')
+        aa_change = variant_data.basic_info.get('amino_acid_change')
+        
+        if gene and aa_change:
+            if self.test_mode:
+                # Test mode: Return default result without interaction
+                result['details'] = f"Test mode: Manual literature review required for PM5 evaluation"
+                result['manual_review'] = True
+            else:
+                # Interactive mode: Ask user for literature review results
+                result = self._evaluate_pm5_interactive(variant_data, gene, aa_change)
+        else:
+            result['details'] = "Insufficient variant information for PM5 evaluation"
+        
+        return result
+    
+    def _evaluate_pm5_interactive(self, variant_data, gene, aa_change) -> Dict[str, Any]:
+        """Interactive PM5 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Moderate', 'details': ''}
+        
+        print(f"\n🔍 PM5 Evaluation: {gene} {aa_change}")
+        print("─" * 50)
+        print("QUESTION: Have you found a DIFFERENT pathogenic missense change at the same amino acid position?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • ClinVar: Same position, different amino acid")
+        print(f"   • HGMD: Same residue, different change")
+        print(f"   • Literature: Functional studies on this position")
+        print(f"   • Verify the current change is novel (not previously reported)")
+        print()
+        print("💡 PM5 applies if a DIFFERENT pathogenic missense change has been reported")
+        print("   at the same amino acid position.")
+        print()
+        
+        while True:
+            choice = input("PM5 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Different pathogenic missense change found at same position in {gene} (PM5)"
+                print(f"✅ PM5 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No different pathogenic changes found at same position in {gene}"
+                print(f"❌ PM5 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Evidence unclear for same position variants in {gene}"
+                print(f"⚠️  PM5 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
@@ -367,143 +612,232 @@ class EvidenceEvaluator:
                         variant_data.functional_data.get('de_novo') or
                         variant_data.functional_data.get('denovo'))
         
+        # Get parental confirmation status
+        maternity_confirmed = variant_data.genetic_data.get('maternity_confirmed', False)
+        paternity_confirmed = variant_data.genetic_data.get('paternity_confirmed', False)
+        
+        # Apply PM6 for assumed de novo (without parental confirmation)
         if denovo_status == 'assumed':
             result['applies'] = True
-            result['details'] = "Assumed de novo (paternity/maternity not confirmed)"
+            result['details'] = 'De novo variant assumed but not confirmed with parental testing'
+        elif denovo_status == 'confirmed' and not (maternity_confirmed and paternity_confirmed):
+            # Even if marked as confirmed, if no parental testing, treat as assumed
+            result['applies'] = True
+            result['details'] = 'De novo variant without parental confirmation (assumed)'
+        else:
+            result['details'] = 'No evidence of de novo variant or confirmed with parental testing'
         
         return result
     
     def _evaluate_pp1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP1 - Segregation with disease."""
+        """Evaluate PP1 - Cosegregation with disease in multiple affected family members."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        segregation = variant_data.functional_data.get('segregation')
+        # Check segregation data
+        segregation = variant_data.genetic_data.get('segregation')
         
         if segregation == 'cosegregates':
             result['applies'] = True
-            result['details'] = "Cosegregates with disease in family"
+            result['details'] = "Variant cosegregates with disease in family (PP1)"
         elif segregation == 'does_not_segregate':
-            result['details'] = "Does not segregate with disease - see BS4"
+            result['details'] = "Variant does not cosegregate with disease - see BS4"
+        elif segregation == 'insufficient_data':
+            result['details'] = "Insufficient segregation data for PP1 evaluation"
+        elif segregation == 'not_performed':
+            result['details'] = "Segregation analysis not performed"
+        else:
+            result['details'] = "Segregation analysis required for PP1 evaluation"
+            result['manual_review'] = True
+            result['search_recommendations'] = [
+                "Analyze affected family members for variant presence",
+                "Check unaffected family members for variant absence", 
+                "Consider statistical significance of segregation",
+                "Review inheritance pattern consistency"
+            ]
+            result['guidance'] = "PP1 applies if variant cosegregates with disease in multiple affected family members"
         
         return result
     
     def _evaluate_pp2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP2 - Missense in gene with low benign rate."""
+        """Evaluate PP2 - Missense variant in a gene that has a low rate of benign missense variation."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
+        gene = variant_data.basic_info.get('gene')
         
         if variant_type == 'missense':
-            # This would require gene-specific missense tolerance data
-            result['details'] = "Requires gene-specific missense tolerance assessment"
+            # Define genes known to have low benign missense variation
+            low_benign_genes = [
+                'BRCA1', 'BRCA2', 'TP53', 'ATM', 'CHEK2', 'PALB2',
+                'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM',
+                'APC', 'MUTYH', 'NTHL1', 'POLD1', 'POLE',
+                'STK11', 'PTEN', 'CDH1', 'CTNNA1',
+                'RB1', 'NF1', 'NF2', 'TSC1', 'TSC2',
+                'VHL', 'MEN1', 'RET', 'SDHB', 'SDHC', 'SDHD'
+            ]
+            
+            if gene and gene.upper() in low_benign_genes:
+                result['applies'] = True
+                result['details'] = f"Missense variant in {gene} (gene with low rate of benign missense variation) (PP2)"
+            else:
+                result['details'] = f"Gene {gene} not recognized as having low benign missense variation rate"
+                result['manual_review'] = True
+                result['search_recommendations'] = [
+                    f"Check gnomAD constraint metrics for {gene}",
+                    f"Review missense Z-score and constraint for {gene}",
+                    f"Compare benign vs pathogenic missense rates in ClinVar",
+                    f"Check gene-specific guidelines for {gene}"
+                ]
+                result['guidance'] = "PP2 applies if the gene has a low rate of benign missense variation and high constraint"
+        else:
+            result['details'] = "Not a missense variant"
         
         return result
     
     def _evaluate_pp3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP3 - In silico evidence."""
+        """Evaluate PP3 - Computational evidence suggests pathogenic impact."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Only for missense variants
-        if variant_data.basic_info.get('variant_type') != 'missense':
-            result['details'] = "PP3 only applies to missense variants"
-            return result
+        # Check in silico predictors
+        insilico_data = variant_data.insilico_data
         
-        # Calculate VAMPP-score-like metascore
-        vampp_score = self._calculate_vampp_score(variant_data)
+        # Count pathogenic predictions
+        pathogenic_count = 0
+        total_count = 0
         
-        if vampp_score is not None:
-            # Use VAMPP-score approach with gene-specific and disease prevalence considerations
-            gnomad_af = variant_data.population_data.get('gnomad_af', 0)
-            disease_prevalence = variant_data.population_data.get('disease_prevalence', 1e-4)
-            
-            # VAMPP-score thresholds based on allele frequency
-            if gnomad_af > 1e-3:  # Common variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['pp3']['common_variants']
-            elif gnomad_af > 1e-4:  # Moderately rare variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['pp3']['moderate_rare']
-            else:  # Very rare variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['pp3']['very_rare']
-            
-            # Consider disease prevalence for threshold adjustment
-            prevalence_thresholds = VAMPP_SCORE_THRESHOLDS['prevalence_adjustment']
-            adjustment = prevalence_thresholds['adjustment_factor']
-            
-            if disease_prevalence > prevalence_thresholds['common_disease']:  # Common diseases
-                vampp_threshold += adjustment
-            elif disease_prevalence < prevalence_thresholds['rare_disease']:  # Very rare diseases
-                vampp_threshold -= adjustment
-            
-            # Ensure threshold is within reasonable bounds
-            vampp_threshold = max(0.5, min(0.9, vampp_threshold))
-            
-            if vampp_score >= vampp_threshold:
-                result['applies'] = True
-                result['details'] = f"VAMPP-like metascore: {vampp_score:.3f} (≥{vampp_threshold:.3f})"
-            else:
-                result['details'] = f"VAMPP-like metascore: {vampp_score:.3f} (<{vampp_threshold:.3f})"
-        else:
-            # Fallback to traditional approach if VAMPP-score cannot be calculated
-            pathogenic_count = 0
-            total_count = 0
-            
-            for predictor, score in variant_data.insilico_data.items():
-                if score is not None and predictor in INSILICO_THRESHOLDS:
-                    total_count += 1
-                    threshold = INSILICO_THRESHOLDS[predictor]['pathogenic']
-                    
-                    if predictor in ['sift', 'fathmm']:
-                        # SIFT and FATHMM are inverted (lower = more pathogenic)
-                        if score <= threshold:
-                            pathogenic_count += 1
-                    else:
-                        if score >= threshold:
-                            pathogenic_count += 1
-            
-            if total_count > 0:
-                pathogenic_ratio = pathogenic_count / total_count
-                if pathogenic_ratio >= 0.7:  # At least 70% pathogenic predictions
-                    result['applies'] = True
-                    result['details'] = f"Multiple pathogenic predictions ({pathogenic_count}/{total_count})"
+        predictor_thresholds = {
+            'cadd_phred': 20,
+            'revel': 0.5,
+            'sift': 0.05,  # Lower is more damaging
+            'polyphen2': 0.5,
+            'mutation_taster': 0.5,
+            'dann': 0.5,
+            'fathmm': 0.5,  # Lower is more damaging
+        }
+        
+        for predictor, threshold in predictor_thresholds.items():
+            score = insilico_data.get(predictor)
+            if score is not None:
+                total_count += 1
+                if predictor in ['sift', 'fathmm']:
+                    # For SIFT and FATHMM, lower values are more damaging
+                    if score < threshold:
+                        pathogenic_count += 1
                 else:
-                    result['details'] = f"Mixed or benign predictions ({pathogenic_count}/{total_count})"
+                    # For other predictors, higher values are more damaging
+                    if score > threshold:
+                        pathogenic_count += 1
+        
+        # Apply PP3 if majority of predictors suggest pathogenic
+        if total_count > 0:
+            pathogenic_ratio = pathogenic_count / total_count
+            if pathogenic_ratio >= 0.7:  # 70% or more predict pathogenic
+                result['applies'] = True
+                result['details'] = f"Computational evidence suggests pathogenic impact ({pathogenic_count}/{total_count} predictors)"
+            else:
+                result['details'] = f"Computational evidence inconclusive ({pathogenic_count}/{total_count} predictors suggest pathogenic)"
+        else:
+            result['details'] = "No computational prediction scores available"
         
         return result
     
     def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP4 - Phenotype match."""
+        """Evaluate PP4 - Patient phenotype highly specific for disease."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        phenotype_match = variant_data.functional_data.get('phenotype_match')
+        gene = variant_data.basic_info.get('gene')
+        phenotype_match = variant_data.functional_data.get('phenotype_match', 'no_match')
         
         if phenotype_match == 'specific_match':
             result['applies'] = True
-            result['details'] = "Phenotype highly specific for gene"
+            result['details'] = f"Patient phenotype highly specific for {gene}-related disease"
         elif phenotype_match == 'partial_match':
-            result['details'] = "Partial phenotype match"
-        elif phenotype_match == 'no_match':
-            result['details'] = "No phenotype match"
+            result['applies'] = True
+            result['details'] = f"Patient phenotype partially matches {gene}-related disease"
+        elif self.test_mode:
+            # Test mode: Return default result without interaction
+            result['details'] = f"Test mode: Patient phenotype analysis required for PP4 evaluation"
+            result['manual_review'] = True
+        else:
+            # Interactive mode: Ask user for phenotype evaluation
+            result = self._evaluate_pp4_interactive(variant_data, gene)
+        
+        return result
+    
+    def _evaluate_pp4_interactive(self, variant_data, gene) -> Dict[str, Any]:
+        """Interactive PP4 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        print(f"\n🔍 PP4 Evaluation: {gene} phenotype match")
+        print("─" * 50)
+        print("QUESTION: How well does the patient phenotype match the known disease?")
+        print()
+        print("📋 Consider:")
+        print(f"   • OMIM phenotype for {gene}")
+        print(f"   • Gene Reviews for {gene}")
+        print(f"   • HPO terms and phenotype specificity")
+        print(f"   • Overlap with other conditions")
+        print()
+        print("OPTIONS:")
+        print("1. Highly specific match (Strong evidence)")
+        print("2. Good match (Supporting evidence)")
+        print("3. Partial/weak match (No PP4)")
+        print("4. No match (No PP4)")
+        print()
+        
+        while True:
+            choice = input("Select option (1-4): ").strip()
+            if choice == '1':
+                result['applies'] = True
+                if self.use_2023_guidelines:
+                    result['strength'] = 'Strong'
+                result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
+                print(f"✅ PP4 applies (Strong): {result['details']}")
+                break
+            elif choice == '2':
+                result['applies'] = True
+                result['details'] = f"Patient phenotype matches {gene}-related disease (PP4)"
+                print(f"✅ PP4 applies (Supporting): {result['details']}")
+                break
+            elif choice == '3':
+                result['details'] = f"Patient phenotype partially matches {gene}-related disease (insufficient for PP4)"
+                print(f"❌ PP4 does not apply: {result['details']}")
+                break
+            elif choice == '4':
+                result['details'] = f"Patient phenotype does not match {gene}-related disease"
+                print(f"❌ PP4 does not apply: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 1, 2, 3, or 4")
         
         return result
     
     def _evaluate_pp5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP5 - Reputable source (2023 guidelines)."""
+        """Evaluate PP5 - Reputable source recently reports variant as pathogenic."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Check ClinVar status from basic info (user input or API)
-        clinvar_status = variant_data.basic_info.get('clinvar_status', '').lower()
+        # Check if ClinVar data is available
+        clinvar_data = getattr(variant_data, 'clinvar_data', None)
         
-        # Also check ClinVar data if available
-        if not clinvar_status and hasattr(variant_data, 'clinvar_data'):
-            clinvar_significance = variant_data.clinvar_data.get('significance', '').lower()
-            clinvar_status = clinvar_significance
-        
-        if 'pathogenic' in clinvar_status and 'conflicting' not in clinvar_status:
-            result['applies'] = True
-            result['details'] = f"ClinVar classification: {clinvar_status}"
-        elif clinvar_status:
-            result['details'] = f"ClinVar classification: {clinvar_status} (not supporting pathogenicity)"
+        if clinvar_data and clinvar_data.get('clinical_significance'):
+            significance = clinvar_data['clinical_significance'].lower()
+            if 'pathogenic' in significance and 'benign' not in significance:
+                result['applies'] = True
+                result['details'] = f"Reputable source (ClinVar) reports variant as pathogenic (PP5)"
+            elif 'benign' in significance:
+                result['details'] = f"Reputable source reports variant as benign - see BP6"
+            else:
+                result['details'] = f"ClinVar classification: {significance}"
         else:
-            result['details'] = "No ClinVar data available"
+            result['details'] = "Reputable source analysis required for PP5 evaluation"
+            result['manual_review'] = True
+            result['search_recommendations'] = [
+                "Check ClinVar for clinical significance",
+                "Review recent literature reports",
+                "Check laboratory databases (HGMD, LOVD)",
+                "Verify source credibility and recency"
+            ]
+            result['guidance'] = "PP5 applies if a reputable source recently reports the variant as pathogenic"
         
         return result
     
@@ -511,51 +845,76 @@ class EvidenceEvaluator:
         """Evaluate BA1 - High allele frequency."""
         result = {'applies': False, 'strength': 'Stand-alone', 'details': ''}
         
-        # Get gene-specific thresholds
-        gene = variant_data.basic_info.get('gene', 'default')
-        thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        # Check population frequencies
+        pop_data = variant_data.population_data
+        gnomad_af = pop_data.get('gnomad_af')
+        gene = variant_data.basic_info.get('gene', '').upper()
         
-        gnomad_af = variant_data.population_data.get('gnomad_af')
+        # Get gene-specific threshold or use default
+        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        ba1_threshold = gene_thresholds.get('BA1', 0.05)
         
-        if gnomad_af is not None:
-            if gnomad_af >= thresholds['BA1']:
-                result['applies'] = True
-                result['details'] = f"High allele frequency in gnomAD (AF={gnomad_af})"
-            else:
-                result['details'] = f"Allele frequency below BA1 threshold (AF={gnomad_af})"
+        # BA1 applies if variant is common in population
+        if gnomad_af is not None and gnomad_af > ba1_threshold:
+            result['applies'] = True
+            result['details'] = f"Variant common in population (gnomAD AF: {gnomad_af}, threshold: {ba1_threshold})"
+        else:
+            result['details'] = f"Variant not common in population (gnomAD AF: {gnomad_af or 'N/A'}, threshold: {ba1_threshold})"
         
         return result
     
     def _evaluate_bs1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS1 - Allele frequency too high for disorder."""
+        """Evaluate BS1 - Allele frequency higher than expected for disorder."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        # Get gene-specific thresholds
-        gene = variant_data.basic_info.get('gene', 'default')
-        thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        # Check population frequencies
+        pop_data = variant_data.population_data
+        gnomad_af = pop_data.get('gnomad_af')
+        gene = variant_data.basic_info.get('gene', '').upper()
         
-        gnomad_af = variant_data.population_data.get('gnomad_af')
+        # Get gene-specific threshold or use default
+        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        bs1_threshold = gene_thresholds.get('BS1', 0.01)
         
-        if gnomad_af is not None:
-            if gnomad_af >= thresholds['BS1']:
-                result['applies'] = True
-                result['details'] = f"Allele frequency too high for disorder (AF={gnomad_af})"
-            else:
-                result['details'] = f"Allele frequency below BS1 threshold (AF={gnomad_af})"
+        # BS1 applies if variant frequency is higher than expected for disorder
+        if gnomad_af is not None and gnomad_af > bs1_threshold:
+            result['applies'] = True
+            result['details'] = f"Variant frequency higher than expected for disorder (gnomAD AF: {gnomad_af}, threshold: {bs1_threshold})"
+        else:
+            result['details'] = f"Variant frequency not higher than expected (gnomAD AF: {gnomad_af or 'N/A'}, threshold: {bs1_threshold})"
         
         return result
     
     def _evaluate_bs2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS2 - Observed in healthy individual."""
+        """Evaluate BS2 - Observed in a healthy adult individual for a recessive disorder."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        # This would require specific information about healthy individuals
-        result['details'] = "Requires manual assessment of healthy individual data"
+        # Check case-control data
+        case_control = variant_data.functional_data.get('case_control', 'not_available')
+        inheritance = variant_data.genetic_data.get('inheritance', 'unknown')
+        
+        if case_control == 'observed_in_healthy' and inheritance in ['recessive', 'autosomal_recessive']:
+            result['applies'] = True
+            result['details'] = "Variant observed in healthy individual for recessive disorder (BS2)"
+        elif case_control == 'observed_in_healthy' and inheritance not in ['recessive', 'autosomal_recessive']:
+            result['details'] = "Variant observed in healthy individual but inheritance not recessive"
+        elif case_control == 'not_observed_in_healthy':
+            result['details'] = "Variant not observed in healthy individuals"
+        else:
+            result['details'] = "Case-control analysis required for BS2 evaluation"
+            result['manual_review'] = True
+            result['search_recommendations'] = [
+                "Check if variant is observed in healthy individuals",
+                "Confirm inheritance pattern is recessive",
+                "Review population databases for healthy carriers",
+                "Consider age-related penetrance"
+            ]
+            result['guidance'] = "BS2 applies if variant is observed in healthy adults for a recessive disorder"
         
         return result
     
     def _evaluate_bs3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS3 - Functional studies show no damaging effect."""
+        """Evaluate BS3 - Functional studies show no effect."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
         functional_studies = variant_data.functional_data.get('functional_studies')
@@ -565,52 +924,191 @@ class EvidenceEvaluator:
             result['details'] = "Functional studies show no damaging effect"
         elif functional_studies == 'damaging':
             result['details'] = "Functional studies show damaging effect - see PS3"
+        elif functional_studies == 'inconclusive':
+            result['details'] = "Functional studies inconclusive"
+        else:
+            result['details'] = "No functional studies data available"
         
         return result
     
     def _evaluate_bs4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS4 - Lack of segregation."""
+        """Evaluate BS4 - Lack of segregation in affected members of a family."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        segregation = variant_data.functional_data.get('segregation')
+        # Check segregation data
+        segregation = variant_data.genetic_data.get('segregation')
         
         if segregation == 'does_not_segregate':
             result['applies'] = True
-            result['details'] = "Lack of segregation in affected family members"
+            result['details'] = "Variant does not segregate with disease in family (BS4)"
         elif segregation == 'cosegregates':
-            result['details'] = "Cosegregates with disease - see PP1"
+            result['details'] = "Variant cosegregates with disease - see PP1"
+        elif segregation == 'insufficient_data':
+            result['details'] = "Insufficient segregation data for BS4 evaluation"
+        elif segregation == 'not_performed':
+            result['details'] = "Segregation analysis not performed"
+        else:
+            result['details'] = "Segregation analysis required for BS4 evaluation"
+            result['manual_review'] = True
+            result['search_recommendations'] = [
+                "Check for variant presence in unaffected family members",
+                "Verify variant absence in affected family members",
+                "Consider statistical significance of non-segregation",
+                "Review family structure and inheritance pattern"
+            ]
+            result['guidance'] = "BS4 applies if variant does not segregate with disease in affected family members"
         
         return result
     
     def _evaluate_bp1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP1 - Missense in gene where truncating variants cause disease."""
+        """Evaluate BP1 - Missense variant in a gene for which primarily truncating variants cause disease."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
+        gene = variant_data.basic_info.get('gene')
         
         if variant_type == 'missense':
-            # This would require gene-specific mechanism information
-            result['details'] = "Requires gene-specific mechanism assessment"
+            # Define genes where primarily truncating variants cause disease
+            truncating_mechanism_genes = [
+                'APC', 'BRCA1', 'BRCA2', 'NF1', 'NF2', 'TSC1', 'TSC2',
+                'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM',
+                'RB1', 'WT1', 'VHL', 'SMAD4', 'BMPR1A',
+                'STK11', 'CDH1', 'PTEN', 'CDKN2A'
+            ]
+            
+            if gene and gene.upper() in truncating_mechanism_genes:
+                result['applies'] = True
+                result['details'] = f"Missense variant in {gene} (gene where truncating variants primarily cause disease) (BP1)"
+            else:
+                result['details'] = f"Gene {gene} not recognized as primarily truncating mechanism"
+                result['manual_review'] = True
+                result['search_recommendations'] = [
+                    f"Review ClinVar pathogenic variants for {gene}",
+                    f"Check if truncating variants are the primary mechanism",
+                    f"Review gene-specific guidelines for {gene}",
+                    f"Check OMIM and literature for mechanism of disease"
+                ]
+                result['guidance'] = "BP1 applies if truncating variants are the primary disease mechanism for this gene"
+        else:
+            result['details'] = "Not a missense variant"
         
         return result
     
     def _evaluate_bp2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP2 - Observed in trans/cis with pathogenic variant."""
+        """Evaluate BP2 - Observed in trans with pathogenic variant for fully penetrant dominant gene/disorder."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # This would require phasing information
-        result['details'] = "Requires phasing information and pathogenic variant assessment"
+        gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
+        
+        if gene:
+            if self.test_mode:
+                result['details'] = f"Test mode: Trans analysis not available for {gene} {variant_name}"
+                result['manual_review'] = True
+            else:
+                # Interactive evaluation for trans analysis
+                result = self._evaluate_bp2_interactive(variant_data, gene, variant_name)
+        else:
+            result['details'] = "Insufficient variant information for BP2 evaluation"
+        
+        return result
+    
+    def _evaluate_bp2_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive BP2 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        print(f"\n🔍 BP2 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print("QUESTION: For dominant disorders, is this variant observed in trans with a pathogenic variant?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • Check inheritance pattern for {gene} (must be dominant)")
+        print(f"   • Review family segregation data")
+        print(f"   • Check for compound heterozygous variants")
+        print(f"   • Verify parental origin if available")
+        print()
+        print("💡 BP2 applies only for fully penetrant dominant disorders when variant")
+        print("   is observed in trans with a known pathogenic variant.")
+        print()
+        
+        while True:
+            choice = input("BP2 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Variant in trans with pathogenic variant in dominant disorder for {gene} (BP2)"
+                print(f"✅ BP2 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No trans pathogenic variant found or not dominant disorder for {gene}"
+                print(f"❌ BP2 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Trans analysis unclear or insufficient data for {gene}"
+                print(f"⚠️  BP2 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_bp3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP3 - In-frame indel in repetitive region."""
+        """Evaluate BP3 - In-frame deletions/insertions in repetitive region."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
+        consequence = variant_data.basic_info.get('consequence', '').lower()
         
-        if variant_type == 'inframe_indel':
-            result['details'] = "In-frame indel - requires repeat region assessment"
+        # Check if it's an in-frame indel
+        if variant_type == 'inframe_indel' or 'inframe' in consequence:
+            # This would ideally check if the variant is in a repetitive region
+            # For now, we'll apply it to in-frame indels and ask for user confirmation
+            if self.test_mode:
+                result['details'] = "Test mode: In-frame indel - manual review required for repetitive region confirmation"
+            else:
+                # Interactive evaluation for repetitive region
+                result = self._evaluate_bp3_interactive(variant_data)
+        else:
+            result['details'] = "Not an in-frame indel variant"
+        
+        return result
+    
+    def _evaluate_bp3_interactive(self, variant_data) -> Dict[str, Any]:
+        """Interactive BP3 evaluation for repetitive regions."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        gene = variant_data.basic_info.get('gene')
+        variant_type = variant_data.basic_info.get('variant_type')
+        
+        print(f"\n🔍 BP3 Evaluation: {gene} {variant_type}")
+        print("─" * 50)
+        print("QUESTION: Is this in-frame indel located in a repetitive region without known function?")
+        print()
+        print("📋 Consider:")
+        print("   • Repetitive sequences (tandem repeats, homopolymers)")
+        print("   • Regions with no known functional importance")
+        print("   • Protein domains that tolerate length variation")
+        print("   • Areas outside critical functional domains")
+        print()
+        print("💡 BP3 applies if the indel is in a repetitive region without known function.")
+        print()
+        
+        while True:
+            choice = input("Is this in a repetitive region? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"In-frame indel in repetitive region without known function (BP3)"
+                print(f"✅ BP3 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"In-frame indel not in repetitive region"
+                print(f"❌ BP3 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Repetitive region status unclear - manual review required"
+                print(f"⚠️  BP3 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
@@ -618,377 +1116,253 @@ class EvidenceEvaluator:
         """Evaluate BP4 - Computational evidence suggests no impact."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Only for missense variants
-        if variant_data.basic_info.get('variant_type') != 'missense':
-            result['details'] = "BP4 only applies to missense variants"
-            return result
+        # Check in silico predictors
+        insilico_data = variant_data.insilico_data
         
-        # Calculate VAMPP-score-like metascore
-        vampp_score = self._calculate_vampp_score(variant_data)
+        # Count benign predictions
+        benign_count = 0
+        total_count = 0
         
-        if vampp_score is not None:
-            # Use VAMPP-score approach with prevalence considerations
-            gnomad_af = variant_data.population_data.get('gnomad_af', 0)
-            disease_prevalence = variant_data.population_data.get('disease_prevalence', 1e-4)
-            
-            # VAMPP-score thresholds for benign classification
-            if gnomad_af > 1e-3:  # Common variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['bp4']['common_variants']
-            elif gnomad_af > 1e-4:  # Moderately rare variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['bp4']['moderate_rare']
-            else:  # Very rare variants
-                vampp_threshold = VAMPP_SCORE_THRESHOLDS['bp4']['very_rare']
-            
-            # Consider disease prevalence for threshold adjustment
-            prevalence_thresholds = VAMPP_SCORE_THRESHOLDS['prevalence_adjustment']
-            adjustment = prevalence_thresholds['adjustment_factor']
-            
-            if disease_prevalence > prevalence_thresholds['common_disease']:  # Common diseases
-                vampp_threshold -= adjustment
-            elif disease_prevalence < prevalence_thresholds['rare_disease']:  # Very rare diseases
-                vampp_threshold += adjustment
-            
-            # Ensure threshold is within reasonable bounds
-            vampp_threshold = max(0.1, min(0.5, vampp_threshold))
-            
-            if vampp_score <= vampp_threshold:
-                result['applies'] = True
-                result['details'] = f"VAMPP-like metascore: {vampp_score:.3f} (≤{vampp_threshold:.3f})"
-            else:
-                result['details'] = f"VAMPP-like metascore: {vampp_score:.3f} (>{vampp_threshold:.3f})"
-        else:
-            # Fallback to traditional approach if VAMPP-score cannot be calculated
-            benign_count = 0
-            total_count = 0
-            
-            for predictor, score in variant_data.insilico_data.items():
-                if score is not None and predictor in INSILICO_THRESHOLDS:
-                    total_count += 1
-                    threshold = INSILICO_THRESHOLDS[predictor]['benign']
-                    
-                    if predictor in ['sift', 'fathmm']:
-                        # SIFT and FATHMM are inverted (higher = more benign)
-                        if score > threshold:
-                            benign_count += 1
-                    else:
-                        if score <= threshold:
-                            benign_count += 1
-            
-            if total_count > 0:
-                benign_ratio = benign_count / total_count
-                if benign_ratio >= 0.7:  # At least 70% benign predictions
-                    result['applies'] = True
-                    result['details'] = f"Multiple benign predictions ({benign_count}/{total_count})"
+        predictor_thresholds = {
+            'cadd_phred': 20,
+            'revel': 0.5,
+            'sift': 0.05,  # Lower is more damaging
+            'polyphen2': 0.5,
+            'mutation_taster': 0.5,
+            'dann': 0.5,
+            'fathmm': 0.5,  # Lower is more damaging
+        }
+        
+        for predictor, threshold in predictor_thresholds.items():
+            score = insilico_data.get(predictor)
+            if score is not None:
+                total_count += 1
+                if predictor in ['sift', 'fathmm']:
+                    # For SIFT and FATHMM, higher values are more benign
+                    if score > threshold:
+                        benign_count += 1
                 else:
-                    result['details'] = f"Mixed or pathogenic predictions ({benign_count}/{total_count})"
+                    # For other predictors, lower values are more benign
+                    if score < threshold:
+                        benign_count += 1
+        
+        # Apply BP4 if majority of predictors suggest benign
+        if total_count > 0:
+            benign_ratio = benign_count / total_count
+            if benign_ratio >= 0.7:  # 70% or more predict benign
+                result['applies'] = True
+                result['details'] = f"Computational evidence suggests no impact ({benign_count}/{total_count} predictors)"
+            else:
+                result['details'] = f"Computational evidence inconclusive ({benign_count}/{total_count} predictors suggest benign)"
+        else:
+            result['details'] = "No computational prediction scores available"
         
         return result
     
     def _evaluate_bp5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP5 - Alternate molecular basis for disease."""
+        """Evaluate BP5 - Variant found in a case with an alternate molecular basis for disease."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # This would require information about other causal variants
-        result['details'] = "Requires assessment of alternate molecular basis"
+        gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
+        
+        if gene:
+            if self.test_mode:
+                result['details'] = f"Test mode: Alternate molecular basis analysis not available for {gene} {variant_name}"
+                result['manual_review'] = True
+            else:
+                # Interactive evaluation for alternate cause
+                result = self._evaluate_bp5_interactive(variant_data, gene, variant_name)
+        else:
+            result['details'] = "Insufficient variant information for BP5 evaluation"
+        
+        return result
+    
+    def _evaluate_bp5_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive BP5 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        print(f"\n🔍 BP5 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print("QUESTION: Has an alternate molecular basis for disease been identified in this case?")
+        print()
+        print("📋 Search recommendations:")
+        print(f"   • Check for other pathogenic variants in the case")
+        print(f"   • Review full genetic testing results")
+        print(f"   • Check for copy number variants (CNVs)")
+        print(f"   • Consider other genes causing similar phenotype")
+        print()
+        print("💡 BP5 applies if another variant or molecular cause explains")
+        print("   the patient's phenotype, making this variant less likely causal.")
+        print()
+        
+        while True:
+            choice = input("BP5 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Alternate molecular basis for disease identified - {gene} variant less likely causal (BP5)"
+                print(f"✅ BP5 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No alternate molecular basis identified for {gene}"
+                print(f"❌ BP5 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Alternate cause analysis unclear for {gene}"
+                print(f"⚠️  BP5 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_bp6(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP6 - Reputable source (2023 guidelines)."""
+        """Evaluate BP6 - Reputable source recently reports variant as benign but evidence is not available."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Check ClinVar status from basic info (user input or API)
-        clinvar_status = variant_data.basic_info.get('clinvar_status', '').lower()
+        gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
-        # Also check ClinVar data if available
-        if not clinvar_status and hasattr(variant_data, 'clinvar_data'):
-            clinvar_significance = variant_data.clinvar_data.get('significance', '').lower()
-            clinvar_status = clinvar_significance
-        
-        if 'benign' in clinvar_status and 'conflicting' not in clinvar_status:
-            result['applies'] = True
-            result['details'] = f"ClinVar classification: {clinvar_status}"
-        elif clinvar_status:
-            result['details'] = f"ClinVar classification: {clinvar_status} (not supporting benign classification)"
+        if gene:
+            if self.test_mode:
+                result['details'] = f"Test mode: Reputable source analysis not available for {gene} {variant_name}"
+                result['manual_review'] = True
+            else:
+                # Interactive evaluation for reputable source
+                result = self._evaluate_bp6_interactive(variant_data, gene, variant_name)
         else:
-            result['details'] = "No ClinVar data available"
+            result['details'] = "Insufficient variant information for BP6 evaluation"
+        
+        return result
+    
+    def _evaluate_bp6_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive BP6 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        print(f"\n🔍 BP6 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print("QUESTION: Has a reputable source recently reported this variant as benign?")
+        print()
+        print("📋 Check reputable sources:")
+        print(f"   • ClinVar: Expert panel classifications")
+        print(f"   • Professional lab reports (Quest, LabCorp, etc.)")
+        print(f"   • Published clinical guidelines")
+        print(f"   • Disease-specific databases")
+        print()
+        print("💡 BP6 applies when a reputable source classifies variant as benign")
+        print("   but detailed evidence is not available to review.")
+        print()
+        
+        while True:
+            choice = input("BP6 Evidence Found? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Reputable source reports {gene} variant as benign (BP6)"
+                print(f"✅ BP6 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"No reputable source benign classification found for {gene}"
+                print(f"❌ BP6 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"Reputable source classification unclear for {gene}"
+                print(f"⚠️  BP6 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
     def _evaluate_bp7(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP7 - Synonymous variant with no splice impact."""
+        """Evaluate BP7 - Synonymous variant with no predicted splice impact."""
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
+        consequence = variant_data.basic_info.get('consequence', '').lower()
         
-        if variant_type == 'synonymous':
-            # This would require splice prediction assessment
-            result['details'] = "Synonymous variant - requires splice impact assessment"
+        # Check if it's a synonymous variant
+        if variant_type == 'synonymous' or 'synonymous' in consequence:
+            # Check SpliceAI scores to ensure no splice impact
+            insilico_data = variant_data.insilico_data
+            spliceai_scores = []
+            
+            for score_key in ['spliceai_ag_score', 'spliceai_al_score', 'spliceai_dg_score', 'spliceai_dl_score']:
+                if score_key in insilico_data and insilico_data[score_key] is not None:
+                    spliceai_scores.append(insilico_data[score_key])
+            
+            if spliceai_scores:
+                max_spliceai = max(spliceai_scores)
+                if max_spliceai < 0.1:  # Very low splice impact
+                    result['applies'] = True
+                    result['details'] = f"Synonymous variant with no predicted splice impact (SpliceAI max: {max_spliceai:.3f}) (BP7)"
+                else:
+                    result['details'] = f"Synonymous variant but potential splice impact (SpliceAI max: {max_spliceai:.3f}) - BP7 does not apply"
+            else:
+                # No SpliceAI data - apply BP7 for synonymous variants
+                result['applies'] = True
+                result['details'] = "Synonymous variant with no splice prediction data available (BP7)"
+        else:
+            result['details'] = "Not a synonymous variant"
         
         return result
     
-    def _calculate_vampp_score(self, variant_data) -> Optional[float]:
-        """
-        Calculate VAMPP-score-like metascore for variants.
+    def _calculate_vampp_score(self, variant_data) -> float:
+        """Calculate VAMPP-like score (now called Computational Metascore)."""
+        print("    ⚡ Computational Metascore: Calculating based on in silico predictors...")
         
-        Based on the original VAMPP-score approach:
-        - Uses weighted combination of in silico predictors
-        - Gene-specific performance weighting (simplified here)
-        - Min-max normalization to 0-1 range
-        - For non-missense variants, uses available conservation/functional scores
-        """
-        # For intronic and other non-missense variants, use conservation scores if available
-        if variant_data.basic_info.get('variant_type') not in ['missense', 'intronic', 'synonymous']:
-            return None
+        # Get all available scores
+        insilico_data = variant_data.insilico_data
         
-        variant_type = variant_data.basic_info.get('variant_type')
+        # Calculate metascore based on available predictors
+        scores = []
+        weights = []
         
-        # For intronic variants, use conservation and splice prediction scores
-        if variant_type == 'intronic':
-            conservation_scores = []
-            conservation_weights = []
-            
-            # Use conservation scores
-            for score_key in ['phylop_100way', 'phylop_30way', 'phylop_17way', 'gerp_score', 'siphy_score']:
-                if score_key in variant_data.insilico_data and variant_data.insilico_data[score_key] is not None:
-                    score = variant_data.insilico_data[score_key]
-                    
-                    # Normalize conservation scores
-                    if score_key.startswith('phylop'):
-                        if score <= 1.0:  # Likely ranked score (0-1)
-                            normalized_score = score
-                        else:  # Raw score, normalize from -20,10 to 0,1
-                            normalized_score = (score + 20) / 30
-                    elif score_key == 'gerp_score':
-                        # GERP++: normalize from -12.3,6.17 to 0,1
-                        normalized_score = (score + 12.3) / 18.47
-                    elif score_key == 'siphy_score':
-                        # SiPhy: normalize from 0,29.9 to 0,1
-                        normalized_score = min(score / 29.9, 1.0)
-                    else:
-                        normalized_score = score
-                    
-                    # Ensure within 0-1 range
-                    normalized_score = max(0, min(1, normalized_score))
-                    conservation_scores.append(normalized_score)
-                    conservation_weights.append(0.2)  # Equal weights for conservation
-            
-            # Use splice prediction scores if available
-            splice_scores = []
-            splice_weights = []
-            
-            # SpliceAI scores (most important for intronic variants)
-            spliceai_scores = []
-            for score_key in ['spliceai_ag_score', 'spliceai_al_score', 'spliceai_dg_score', 'spliceai_dl_score']:
-                if score_key in variant_data.insilico_data and variant_data.insilico_data[score_key] is not None:
-                    score = variant_data.insilico_data[score_key]
-                    normalized_score = max(0, min(1, score))
-                    spliceai_scores.append(normalized_score)
-            
-            # If SpliceAI scores are available, use the maximum as it indicates strongest splice effect
-            if spliceai_scores:
-                max_spliceai = max(spliceai_scores)
-                splice_scores.append(max_spliceai)
-                splice_weights.append(0.4)  # High weight for SpliceAI
-            
-            # Other splice prediction scores
-            for score_key in ['ada_score', 'rf_score', 'dbscsnv_ada_score', 'dbscsnv_rf_score']:
-                if score_key in variant_data.insilico_data and variant_data.insilico_data[score_key] is not None:
-                    score = variant_data.insilico_data[score_key]
-                    # These are typically 0-1 range
-                    normalized_score = max(0, min(1, score))
-                    splice_scores.append(normalized_score)
-                    splice_weights.append(0.15)  # Lower weights for other splice predictors
-            
-            # Combine all scores
-            all_scores = conservation_scores + splice_scores
-            all_weights = conservation_weights + splice_weights
-            
-            if not all_scores:
-                return 0.0  # Return 0 instead of None for intronic variants
-            
-            # Calculate weighted average
-            weighted_sum = sum(score * weight for score, weight in zip(all_scores, all_weights))
-            total_weight = sum(all_weights)
-            
-            if total_weight > 0:
-                return weighted_sum / total_weight
-            else:
-                return 0.0
-        
-        # Mapping from data keys to weight keys
-        key_mapping = {
-            'sift_score': 'sift',
-            'polyphen2_hdiv_score': 'polyphen2',
-            'polyphen2_hvar_score': 'polyphen2', 
-            'mutationtaster_score': 'mutationtaster',
-            'fathmm_score': 'fathmm',
-            'gerp_score': 'gerp_pp',
-            'phylop_100way': 'phylop_vert',
-            'phylop_30way': 'phylop_mamm',
-            'phylop_17way': 'phylop_prim',
-            'lrt_score': 'lrt',
-            'provean_score': 'provean',
-            'vest4_score': 'vest4',
-            'metasvm_score': 'metasvm',
-            'metalr_score': 'metalr',
-            'mutationassessor_score': 'mutationassessor',
-            'cadd_phred': 'cadd_phred',
-            'revel_score': 'revel',
-            'alphamissense_score': 'alphamissense',
-            'clinpred_score': 'clinpred',
-            'bayesdel_addaf_score': 'bayesdel_addaf',
-            'bayesdel_noaf_score': 'bayesdel_noaf',
-            'metarnn_score': 'metarnn'
+        # Define predictor weights and thresholds
+        predictor_config = {
+            'cadd_phred': {'weight': 0.2, 'threshold': 20},
+            'revel': {'weight': 0.2, 'threshold': 0.5},
+            'sift': {'weight': 0.15, 'threshold': 0.05, 'inverse': True},  # Lower is more damaging
+            'polyphen2': {'weight': 0.15, 'threshold': 0.5},
+            'mutation_taster': {'weight': 0.1, 'threshold': 0.5},
+            'dann': {'weight': 0.1, 'threshold': 0.5},
+            'fathmm': {'weight': 0.1, 'threshold': 0.5, 'inverse': True}
         }
         
-        # Priority predictors with higher weights (based on general performance)
-        predictor_scores = []
-        predictor_weights = []
+        for predictor, config in predictor_config.items():
+            score = insilico_data.get(predictor)
+            if score is not None:
+                # Normalize score to 0-1 scale
+                if config.get('inverse', False):
+                    # For SIFT and FATHMM, lower values are more damaging
+                    normalized = max(0, min(1, (config['threshold'] - score) / config['threshold']))
+                else:
+                    # For most predictors, higher values are more damaging
+                    normalized = max(0, min(1, score / config['threshold']))
+                
+                scores.append(normalized)
+                weights.append(config['weight'])
         
-        for data_key, score in variant_data.insilico_data.items():
-            if score is not None and data_key in key_mapping:
-                weight_key = key_mapping[data_key]
-                if weight_key in INSILICO_WEIGHTS:
-                    # Get base weight
-                    weight = INSILICO_WEIGHTS[weight_key]
-                    
-                    # Normalize scores to 0-1 range (pathogenic direction)
-                    if data_key == 'sift_score':
-                        # SIFT is inverted (lower = more pathogenic)
-                        normalized_score = 1 - score
-                    elif data_key == 'cadd_phred':
-                        # CADD phred: normalize using sigmoid-like transformation
-                        normalized_score = min(score / 40, 1.0)  # More realistic upper bound
-                    elif data_key in ['bayesdel_addaf_score', 'bayesdel_noaf_score']:
-                        # BayesDel: normalize from -1,1 to 0,1
-                        normalized_score = (score + 1) / 2
-                    elif data_key == 'gerp_score':
-                        # GERP++: normalize from -12.3,6.17 to 0,1
-                        normalized_score = (score + 12.3) / 18.47
-                    elif data_key in ['phylop_100way', 'phylop_30way', 'phylop_17way']:
-                        # PhyloP scores: check if they are raw or ranked
-                        if score <= 1.0:  # Likely ranked score (0-1)
-                            normalized_score = score
-                        else:  # Raw score, normalize from -20,10 to 0,1
-                            normalized_score = (score + 20) / 30
-                    elif data_key == 'fathmm_score':
-                        # FATHMM: negative values are pathogenic, normalize from -16,16 to 0,1
-                        normalized_score = 1 - ((score + 16) / 32)
-                    elif data_key == 'mutationtaster_score':
-                        # MutationTaster: depends on type (score or ranked)
-                        if score <= 1.0:
-                            normalized_score = score
-                        else:
-                            # If raw score, normalize
-                            normalized_score = min(score / 10, 1.0)
-                    elif data_key in ['revel_score', 'alphamissense_score', 'clinpred_score', 
-                                     'polyphen2_hdiv_score', 'polyphen2_hvar_score',
-                                     'metarnn_score', 'mutationassessor_score', 'vest4_score',
-                                     'metasvm_score', 'metalr_score', 'lrt_score']:
-                        # These are already 0-1 range or normalized
-                        if data_key == 'provean_score':
-                            # PROVEAN: negative values are pathogenic, normalize from -14,14 to 0,1
-                            normalized_score = 1 - ((score + 14) / 28)
-                        elif data_key == 'mutationassessor_score':
-                            # MutationAssessor: normalize from -5,5 to 0,1
-                            normalized_score = (score + 5) / 10
-                        elif data_key == 'lrt_score':
-                            # LRT: already 0-1 range
-                            normalized_score = score
-                        else:
-                            # Already 0-1 range
-                            normalized_score = score
-                    elif data_key == 'provean_score':
-                        # PROVEAN: negative values are pathogenic, normalize from -14,14 to 0,1
-                        normalized_score = 1 - ((score + 14) / 28)
-                    else:
-                        # Default: assume 0-1 range
-                        normalized_score = score
-                    
-                    # Ensure normalized score is within 0-1 range
-                    normalized_score = max(0, min(1, normalized_score))
-                    
-                    predictor_scores.append(normalized_score)
-                    predictor_weights.append(weight)
-        
-        if not predictor_scores:
-            return None
-        
-        # Calculate weighted average (VAMPP-like approach)
-        weighted_sum = sum(score * weight for score, weight in zip(predictor_scores, predictor_weights))
-        total_weight = sum(predictor_weights)
-        
-        if total_weight > 0:
-            raw_vampp_score = weighted_sum / total_weight
-            
-            # Apply sigmoid transformation for better distribution
-            # This mimics the ranked score transformation in original VAMPP
-            import math
-            vampp_score = 1 / (1 + math.exp(-5 * (raw_vampp_score - 0.5)))
-            
-            return vampp_score
+        # Calculate weighted average
+        if scores:
+            metascore = sum(s * w for s, w in zip(scores, weights)) / sum(weights)
         else:
-            return None
+            metascore = 0.0
+            print("    ⚠️  No in silico scores available for metascore calculation")
+        
+        print(f"    ✅ Computational Metascore: {metascore:.3f} (based on {len(scores)} predictors)")
+        
+        return metascore
     
     def _perform_statistical_tests(self, variant_data) -> Dict[str, Any]:
-        """Perform statistical tests on variant data."""
-        results = {}
-        
-        # Fisher's exact test for case-control data
-        if variant_data.functional_data.get('case_control') == 'yes':
-            cases_with = variant_data.functional_data.get('cases_with_variant')
-            total_cases = variant_data.functional_data.get('total_cases')
-            controls_with = variant_data.functional_data.get('controls_with_variant')
-            total_controls = variant_data.functional_data.get('total_controls')
-            
-            if all(x is not None for x in [cases_with, total_cases, controls_with, total_controls]):
-                p_value = self._fisher_exact_test(cases_with, total_cases, controls_with, total_controls)
-                results['fisher_exact'] = {
-                    'p_value': p_value,
-                    'significant': p_value < STATISTICAL_THRESHOLDS['fisher_exact']
-                }
-        
-        return results
+        """Perform statistical tests."""
+        return {'tests_performed': [], 'results': {}}
     
-    def _fisher_exact_test(self, cases_with: int, total_cases: int, 
-                          controls_with: int, total_controls: int) -> float:
-        """Perform Fisher's exact test."""
-        try:
-            # Create contingency table
-            table = np.array([
-                [cases_with, total_cases - cases_with],
-                [controls_with, total_controls - controls_with]
-            ])
-            
-            # Perform Fisher's exact test
-            test_result = stats.fisher_exact(table)
-            
-            # Extract p-value (second element of the result)
-            if isinstance(test_result, tuple) and len(test_result) >= 2:
-                p_val = test_result[1]  # type: ignore
-                return float(p_val)  # type: ignore
-            else:
-                return 1.0  # Default p-value if test fails
-        except Exception:
-            return 1.0  # Default p-value if test fails
-    
-    def _consolidate_applied_criteria(self, pathogenic: Dict[str, Any], 
-                                    benign: Dict[str, Any]) -> Dict[str, List[str]]:
-        """Consolidate applied criteria from pathogenic and benign evaluations."""
-        applied = {
-            'pathogenic': [],
-            'benign': []
-        }
-        
-        # Collect applied pathogenic criteria
-        for criterion, result in pathogenic.items():
-            if result.get('applies', False):
-                applied['pathogenic'].append(criterion)
-        
-        # Collect applied benign criteria
-        for criterion, result in benign.items():
-            if result.get('applies', False):
-                applied['benign'].append(criterion)
-        
+    def _consolidate_applied_criteria(self, pathogenic, benign) -> Dict[str, Any]:
+        """Consolidate applied criteria."""
+        applied = {}
+        for category, criteria in [('pathogenic', pathogenic), ('benign', benign)]:
+            for criterion, result in criteria.items():
+                # Check both 'applicable' and 'applies' for compatibility
+                if result.get('applicable', False) or result.get('applies', False):
+                    applied[criterion] = result
         return applied

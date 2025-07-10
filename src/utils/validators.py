@@ -117,6 +117,9 @@ class Validators:
         
         # Normalize chromosome format
         chr_val = str(chromosome).upper().replace('CHR', '')
+        # Convert M to MT for mitochondrial chromosome
+        if chr_val == 'M':
+            chr_val = 'MT'
         
         # Check if valid chromosome
         valid_chromosomes = [str(i) for i in range(1, 23)] + ['X', 'Y', 'MT']
