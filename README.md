@@ -4,7 +4,7 @@
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1KkbF3fqoyvRB1b7S0-CmU9AFkyVUidxD/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1z-Ybgn2zzDbocyD9KVPwwB3S91YzI3Rt/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -25,8 +25,8 @@
 
 ### Standalone Executable (Recommended)
 ```bash
-# Download and extract ACMG_Assistant_v3.0.0.zip
-# Run: ACMG_Assistant_v3.0.0.exe
+# Download and extract ACMG_Assistant.zip
+# Run: ACMG_Assistant.exe
 ```
 
 ### Python Installation
