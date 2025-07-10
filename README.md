@@ -31,8 +31,8 @@
 
 ### Python Installation
 ```bash
-git clone https://github.com/Bilmem2/acmg-assessor.git
-cd acmg-assessor/src
+git clone https://github.com/Bilmem2/ACMG_Assistant
+cd src
 pip install -r ../requirements.txt
 python acmg_assistant.py
 ```
@@ -40,11 +40,11 @@ python acmg_assistant.py
 ### Command Options
 ```bash
 # Normal mode
-ACMG_Assistant_v3.0.0.exe             # Executable
+ACMG_Assistant.exe             # Executable
 python acmg_assistant.py               # Python (from src/ directory)
 
 # ACMG 2023 guidelines
-ACMG_Assistant_v3.0.0.exe --acmg-2023
+ACMG_Assistant.exe --acmg-2023
 python acmg_assistant.py --acmg-2023
 
 # Test mode (Python only)
@@ -61,7 +61,7 @@ python build_executable_new.py
 ## 📊 Latest Release & Version History
 
 For version history, release notes, and previous versions, visit:
-**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
+**[GitHub Releases](https://github.com/Bilmem2/ACMG_Assistant/releases)**
 
 Each release includes:
 - Source code archives
