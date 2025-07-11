@@ -13,6 +13,9 @@
 
 ---
 
+<img width="1108" height="622" alt="acmg assistant v3 1 0 screenshot" src="https://github.com/user-attachments/assets/9d999ba7-736b-46da-9a3a-8527103cf4a2" />
+
+
 ## ⚙️ Key Features
 
 - **Complete ACMG/AMP Guidelines**: All 28 criteria (2015 & 2023) with precise PS2/PM6 de novo logic
