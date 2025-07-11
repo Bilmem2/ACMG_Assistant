@@ -14,7 +14,7 @@
 ---
 
 <img width="1108" height="622" alt="acmg assistant v3 1 0 screenshot" src="https://github.com/user-attachments/assets/9d999ba7-736b-46da-9a3a-8527103cf4a2" />
-
+Screenshot of the CLI welcome page
 
 ## ⚙️ Key Features
 
