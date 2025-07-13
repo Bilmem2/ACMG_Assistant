@@ -19,6 +19,46 @@ def build_executable():
     print("🔧 Building ACMG Assistant Executable...")
     print("=" * 50)
     
+    # Debug: Print current working directory
+    print(f"🐛 DEBUG: Current working directory: {os.getcwd()}")
+    print(f"🐛 DEBUG: Files in current directory:")
+    for f in os.listdir('.'):
+        print(f"  - {f}")
+    
+    # Check if we're already in src directory or need to change to it
+    current_dir = os.getcwd()
+    if current_dir.endswith('src'):
+        # Already in src directory
+        src_dir = "."
+        original_dir = os.path.dirname(current_dir)
+        print(f"🐛 DEBUG: Already in src directory")
+    else:
+        # Need to change to src directory
+        src_dir = "src"
+        original_dir = current_dir
+        print(f"🐛 DEBUG: Looking for src directory: {src_dir}")
+        if not os.path.exists(src_dir):
+            print(f"❌ Source directory '{src_dir}' not found")
+            return False
+        os.chdir(src_dir)
+        print(f"🐛 DEBUG: Changed to src directory")
+    
+    print(f"📁 Working in source directory: {os.getcwd()}")
+    print(f"🐛 DEBUG: Files in source directory:")
+    for f in os.listdir('.'):
+        print(f"  - {f}")
+    
+    # Check if main script exists
+    script_name = "acmg_assistant.py"
+    if not os.path.exists(script_name):
+        print(f"❌ Script '{script_name}' not found in {os.getcwd()}")
+        print("Files in current directory:")
+        for f in os.listdir('.'):
+            print(f"  - {f}")
+        if not current_dir.endswith('src'):
+            os.chdir(original_dir)
+        return False
+    
     # Check if PyInstaller is installed
     try:
         import PyInstaller
@@ -29,9 +69,8 @@ def build_executable():
         print("✅ PyInstaller installed successfully")
     
     # Build configuration
-    script_name = "acmg_assistant.py"
     exe_name = "ACMG_Assistant"
-    dist_folder = "ACMG_Assistant_Portable"
+    dist_folder = "ACMG_Assistant_v3.0.0"
     
     # PyInstaller command - Console app for better interaction
     cmd = [
@@ -61,13 +100,16 @@ def build_executable():
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print("✅ Build completed successfully!")
         
+        # Change back to original directory for distribution
+        os.chdir(original_dir)
+        
         # Create distribution folder
         create_distribution_folder(exe_name, dist_folder)
         
         print(f"\n🎉 Executable created successfully!")
-        print(f"📁 Location: {dist_folder}")
+        print(f"📁 Location: Desktop/{dist_folder}")
         print(f"📝 Instructions:")
-        print(f"   1. Test the executable in the {dist_folder} folder")
+        print(f"   1. Test the executable in the Desktop/{dist_folder} folder")
         print(f"   2. Zip the entire {dist_folder} folder for distribution")
         print(f"   3. Share with users who don't have Python installed")
         
@@ -77,6 +119,7 @@ def build_executable():
             print(f"stdout: {e.stdout}")
         if e.stderr:
             print(f"stderr: {e.stderr}")
+        os.chdir(original_dir)
         return False
     
     return True
@@ -84,32 +127,36 @@ def build_executable():
 def create_distribution_folder(exe_name, dist_folder):
     """Create a clean distribution folder with necessary files"""
     
-    print(f"\n📦 Creating distribution folder: {dist_folder}")
+    # Get desktop path
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    dist_path = os.path.join(desktop, dist_folder)
     
-    # Create distribution folder
-    if os.path.exists(dist_folder):
-        shutil.rmtree(dist_folder)
-    os.makedirs(dist_folder)
+    print(f"\n📦 Creating distribution folder on Desktop: {dist_path}")
+    
+    # Create distribution folder on desktop
+    if os.path.exists(dist_path):
+        shutil.rmtree(dist_path)
+    os.makedirs(dist_path)
     
     # Copy executable
-    exe_path = f"dist/{exe_name}.exe"
+    exe_path = f"src/dist/{exe_name}.exe"
     if os.path.exists(exe_path):
-        shutil.copy2(exe_path, dist_folder)
-        print(f"✅ Copied {exe_name}.exe")
+        shutil.copy2(exe_path, dist_path)
+        print(f"✅ Copied {exe_name}.exe to Desktop")
     else:
         print(f"❌ Executable not found: {exe_path}")
         return False
     
     # Create batch files for easy use
-    create_batch_files(dist_folder, exe_name)
+    create_batch_files(dist_path, exe_name)
     
     # Copy documentation
-    copy_documentation(dist_folder)
+    copy_documentation(dist_path)
     
     # Create README for executable
-    create_executable_readme(dist_folder)
+    create_executable_readme(dist_path)
     
-    print("✅ Distribution folder created successfully!")
+    print(f"✅ Distribution folder created successfully on Desktop: {dist_path}")
     return True
 
 def create_batch_files(dist_folder, exe_name):
@@ -228,7 +275,7 @@ For technical support, please create an issue on GitHub.
 This project is licensed under the MIT License - see LICENSE file for details.
 """
     
-    with open(f"{dist_folder}/README_EXECUTABLE.txt", "w") as f:
+    with open(f"{dist_folder}/README_EXECUTABLE.txt", "w", encoding='utf-8') as f:
         f.write(readme_content)
     
     print("✅ Created executable README")
@@ -236,15 +283,11 @@ This project is licensed under the MIT License - see LICENSE file for details.
 def main():
     """Main build function"""
     
-    if not os.path.exists("acmg_assistant.py"):
-        print("❌ Error: acmg_assistant.py not found in current directory")
-        sys.exit(1)
-    
     success = build_executable()
     
     if success:
         print(f"\n🎉 Build completed successfully!")
-        print(f"📁 Executable ready for distribution in 'ACMG_Assistant_Portable' folder")
+        print(f"📁 Executable ready for distribution on Desktop")
         print(f"💡 Note: Test mode is disabled in executable - only available in Python version")
     else:
         print(f"\n❌ Build failed. Please check the error messages above.")

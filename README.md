@@ -1,42 +1,50 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**ACMG/AMP Variant Classification with Statistical Framework**  
-*Last Updated: July 2025*
+**ACMG/AMP Variant Classification with Enhanced Statistical Framework**
 
-A comprehensive tool for classifying genetic variants according to ACMG/AMP 2015 and 2023 guidelines. Features VAMPP-score implementation, comprehensive in silico predictor integration, and evidence evaluation algorithms.
+## **Quick Start**
+
+> **📥 [Download Latest Version from Google Drive]()**  
+> 
+> **Ready-to-use standalone executable - No Python installation required!**  
+> 1. Download and extract the zip file  
+> 2. Run `ACMG_Assistant.exe`  
+> 3. Start classifying variants immediately  
+
+---
 
 ## ⚙️ Key Features
 
-- **Complete ACMG/AMP Guidelines**: 2015 & 2023 standards with PP5/BP6 and PS2_Very_Strong
-- **30+ In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, PrimateAI, ESM1b, SpliceAI, MMSplice
-- **VAMPP-Score Integration**: Metascore with weighted predictor combination
-- **API Integration**: ClinVar and Ensembl with intelligent caching
-- **Statistical Framework**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
+- **Complete ACMG/AMP Guidelines**: All 28 criteria (2015 & 2023) with precise PS2/PM6 de novo logic
+- **Interactive Evidence Evaluation**: User-guided literature review for PS1/PM5/PP4/PS4/PM3/BP2/BP5/BP6 criteria  
+- **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
+- **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
+- **Advanced Statistics**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
 
 ## 💻 Installation & Usage
 
 ### Standalone Executable (Recommended)
 ```bash
-# Download and extract ACMG_Assistant_Portable.zip
-# Run: ACMG_Assistant.exe
+# Download and extract ACMG_Assistant_v3.0.0.zip
+# Run: ACMG_Assistant_v3.0.0.exe
 ```
 
 ### Python Installation
 ```bash
 git clone https://github.com/Bilmem2/acmg-assessor.git
-cd acmg-assessor
-pip install -r requirements.txt
+cd acmg-assessor/src
+pip install -r ../requirements.txt
 python acmg_assistant.py
 ```
 
 ### Command Options
 ```bash
 # Normal mode
-acmg_assistant.exe                    # Executable
-python acmg_assistant.py              # Python
+ACMG_Assistant_v3.0.0.exe             # Executable
+python acmg_assistant.py               # Python (from src/ directory)
 
 # ACMG 2023 guidelines
-acmg_assistant.exe --acmg-2023
+ACMG_Assistant_v3.0.0.exe --acmg-2023
 python acmg_assistant.py --acmg-2023
 
 # Test mode (Python only)
@@ -47,52 +55,94 @@ python acmg_assistant.py --test
 
 ```bash
 pip install -r requirements_build.txt
-python build_executable.py
+python build_executable_new.py
 ```
+
+## 📊 Latest Release & Version History
+
+For version history, release notes, and previous versions, visit:
+**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
+
+Each release includes:
+- Detailed changelog and new features
+- Standalone executable downloads
+- Source code archives
+- Installation instructions
 
 ## 📊 In Silico Predictors
 
-**Primary Metascores**: REVEL, CADD, AlphaMissense, MetaRNN, ClinPred, BayesDel  
-**High Priority**: VEST4, PrimateAI, ESM1b, PROVEAN  
-**Conservation**: PhyloP (100/30/17-way), GERP++  
-**Splice**: SpliceAI, MMSplice, Ada, RF, dbscSNV  
-**Individual**: SIFT, PolyPhen-2, MutationTaster, FATHMM
+This algorithm integrates **30+ computational prediction tools** across multiple categories for comprehensive variant pathogenicity assessment:
 
-**Score Sources**: Varsome, ClinVar, dbNSFP (manual entry required)
+### 🎯 **Primary Metascores & Ensemble Methods**
+- **REVEL** - Rare Exome Variant Ensemble Learner
+- **CADD** - Combined Annotation Dependent Depletion  
+- **AlphaMissense** - DeepMind's protein structure-based predictor
+- **MetaRNN** - Recurrent neural network metapredictor
+- **ClinPred** - Clinical significance predictor
+- **BayesDel** - Bayesian deleteriousness score
+- **MetaSVM/MetaLR** - SVM/Logistic regression ensemble methods
 
-## 🧪 Test Cases
+### 🧬 **Missense Variant Predictors**
+- **SIFT** - Sorting Intolerant From Tolerant
+- **PolyPhen-2** - Polymorphism Phenotyping v2 (HDiv/HVar)
+- **PROVEAN** - Protein Variation Effect Analyzer
+- **VEST4** - Variant Effect Scoring Tool v4
+- **ESM1b** - Evolutionary Scale Modeling (protein language model)
+- **MutationTaster** - Disease-causing potential predictor
+- **FATHMM** - Functional Analysis through Hidden Markov Models
+- **MutationAssessor** - Functional impact assessment
+- **MutPred** - Pathogenicity prediction with structural features
+- **LRT** - Likelihood Ratio Test
 
-```bash
-python test_camta1.py                    # CAMTA1 variant
-python test_comprehensive_scenarios.py  # Multiple scenarios
-python test_vus_scenarios.py            # VUS classification
-```
+### 🧮 **Conservation & Evolutionary Analysis**
+- **PhyloP** - Multiple alignments (100/30/17-way vertebrates/mammals/primates)
+- **phastCons** - Phylogenetic conservation (100/30/17-way)
+- **GERP++** - Genomic Evolutionary Rate Profiling
+- **SiPhy** - Site-specific phylogenetic analysis
+
+### ✂️ **Splice Site Prediction**
+- **SpliceAI** - Deep learning splice predictor (AG/AL/DG/DL scores)
+- **Ada** - Adaptive boosting splice predictor
+- **RF** - Random Forest splice predictor
+
+### 🔬 **Functional & Regulatory Predictors**
+- **FITCONS** - Functional information content (multiple cell types)
+- **Combined Metascore** - Custom VAMPP-like weighted combination
+
+### 📈 **VAMPP-Score Integration**
+- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
+- **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
+- **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
+- **Conservation Analysis** - Multi-species phylogenetic conservation scoring
+
+### 📚 **Data Sources & Integration**
+- **Varsome** - Comprehensive variant annotation platform
+- **ClinVar** - NCBI clinical significance database
+- **dbNSFP** - Database of human non-synonymous SNPs
+- **Manual Entry** - Custom predictor score input interface
+
+> **Note**: All predictor scores require manual entry - no automatic database retrieval is performed to ensure data accuracy and user control.
+
 
 ## 🏗️ Project Structure
 
 ```
-acmg_assessor/
-├── acmg_assistant.py              # Main application entry point
-├── build_executable.py            # PyInstaller build script
-├── requirements.txt               # Python dependencies
-├── requirements_build.txt         # Build-specific dependencies
+src/
+├── acmg_assistant.py          # Main application entry point  
 ├── config/
 │   ├── __init__.py
-│   └── constants.py              # ACMG criteria thresholds, predictor configs
+│   └── constants.py           # ACMG criteria thresholds, predictor configs
 ├── core/
 │   ├── __init__.py
-│   ├── acmg_classifier.py        # Main classification engine
-│   ├── evidence_evaluator.py     # Evidence scoring logic
-│   └── variant_data.py           # Variant data structures
-├── utils/
-│   ├── __init__.py
-│   ├── api_client.py             # ClinVar/Ensembl API integrations
-│   ├── input_handler.py          # User input processing
-│   ├── report_generator.py       # Classification report output
-│   └── validators.py             # Input validation functions
-└── tests/
-    ├── test_*.py                 # Comprehensive test suites
-    └── __pycache__/              # Python bytecode cache
+│   ├── acmg_classifier.py     # Main classification engine
+│   ├── evidence_evaluator.py  # Evidence scoring logic
+│   └── variant_data.py        # Variant data structures
+└── utils/
+    ├── __init__.py
+    ├── api_client.py          # ClinVar/Ensembl API integrations
+    ├── input_handler.py       # User input processing
+    ├── report_generator.py    # Classification report output
+    └── validators.py          # Input validation functions
 ```
 
 ## 📈 ACMG Criteria Implementation & Algorithm
@@ -108,9 +158,11 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 
 ### ACMG/AMP Criteria Support
 
+**All 28 Criteria Fully Implemented**:
+
 **Pathogenic Evidence**:
 - **PVS1**: Null variants in haploinsufficient genes with splice prediction
-- **PS1-4**: Functional studies, segregation, prevalence analysis with statistical validation
+- **PS1-4**: Functional studies, segregation, prevalence analysis with statistical validation  
 - **PM1-6**: Domain analysis, gene-specific frequencies, computational predictions
 - **PP1-5**: Segregation support, functional confirmation, computational evidence
 
@@ -119,8 +171,11 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **BS1-4**: Functional studies, segregation analysis, computational predictions
 - **BP1-7**: Comprehensive computational and frequency-based evidence
 
+**Interactive Criteria**: PS1, PS4, PM3, PM5, PP4, BP2, BP5, BP6 feature user-guided literature review
+**Automated Criteria**: All others use data-driven logic with manual review options
+
 ### Special Algorithm Features
-- **VAMPP-Score Integration**: Metascore combining 30+ predictors for PP3/BP4
+- **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
 - **Gene-Specific PM2**: Custom population frequency thresholds per gene
 - **Statistical PS4**: Fisher's Exact Test for case-control prevalence analysis
 - **Conservation Analysis**: Multi-species phylogenetic conservation scoring
@@ -137,6 +192,13 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **Test Mode**: Available only in Python installation, not in standalone executable
 
 ##   Citation & References
+
+**If you use this algorithm in your research or clinical pipeline, please cite:**
+
+[https://doi.org/10.5281/zenodo.15831866](https://doi.org/10.5281/zenodo.15831866)
+
+---
+
 This tool uses a VAMPP-score-like metascore approach for in silico pathogenicity prediction, inspired by the original VAMPP-score framework. If you use this tool, the VAMPP-score, or any component of their statistical framework in your work, please cite the original VAMPP-score publication:
 
 > Eylul Aydin, Berk Ergun, Ozlem Akgun-Dogan, Yasemin Alanay, Ozden Hatirnaz Ng, Ozkan Ozdemir. "A New Era in Missense Variant Analysis: Statistical Insights and the Introduction of VAMPP-Score for Pathogenicity Assessment." *bioRxiv* (2024.07.11.602867). [DOI: 10.1101/2024.07.11.602867](https://doi.org/10.1101/2024.07.11.602867)
@@ -150,9 +212,5 @@ For in silico and molecular analysis methodology, see:
 ## 👤 Contact
 
 - **Author**: Can Sevilmiş
+- **Email**: cansevilmiss@gmail.com
 - **LinkedIn**: [cansevilmiss](https://linkedin.com/in/cansevilmiss)
-- **GitHub**: [Bilmem2](https://github.com/Bilmem2)
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file.
