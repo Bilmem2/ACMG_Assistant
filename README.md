@@ -4,7 +4,7 @@
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1z-Ybgn2zzDbocyD9KVPwwB3S91YzI3Rt/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1PGvQ_B1SdaWlQZCNp6KcedU-WjFN9ioD/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
