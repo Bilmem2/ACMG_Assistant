@@ -1,3 +1,4 @@
+
 """
 Variant Data Structure
 =====================
@@ -13,6 +14,13 @@ import json
 
 @dataclass
 class VariantData:
+    @property
+    def gene(self):
+        return self.basic_info.get('gene', None)
+
+    @property
+    def hgvs_c(self):
+        return self.basic_info.get('hgvs_c', None)
     """
     Comprehensive data structure for genetic variant information.
     

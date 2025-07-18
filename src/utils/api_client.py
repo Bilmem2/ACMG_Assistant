@@ -1,3 +1,62 @@
+import time
+
+class APICache:
+    def __init__(self):
+        self.cache = {}
+        self.ttl = 3600  # seconds
+        self.timestamps = {}
+    def get(self, key):
+        if key in self.cache and (time.time() - self.timestamps[key]) < self.ttl:
+            return self.cache[key]
+        return None
+    def set(self, key, value):
+        self.cache[key] = value
+        self.timestamps[key] = time.time()
+
+class RateLimiter:
+    def __init__(self, max_calls=10, period=1):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = []
+    def allow(self):
+        now = time.time()
+        self.calls = [t for t in self.calls if now - t < self.period]
+        if len(self.calls) < self.max_calls:
+            self.calls.append(now)
+            return True
+        return False
+
+class CachedAPIClient:
+    def __init__(self):
+        self.cache = APICache()
+        self.rate_limiter = RateLimiter()
+    def get_variant_annotations(self, variant_key):
+        cached = self.cache.get(variant_key)
+        if cached:
+            return cached
+        if not self.rate_limiter.allow():
+            raise Exception("Rate limit exceeded")
+        result = self._fetch_variant_annotations(variant_key)
+        self.cache.set(variant_key, result)
+        return result
+    def _fetch_variant_annotations(self, variant_key):
+        # Placeholder: Simulate annotation
+        return {"variant": variant_key, "annotation": "simulated_result"}
+    def batch_annotate_variants(self, variant_list):
+        cached_results = {}
+        uncached_variants = []
+        for variant in variant_list:
+            cached_result = self.cache.get(variant)
+            if cached_result:
+                cached_results[variant] = cached_result
+            else:
+                uncached_variants.append(variant)
+        if uncached_variants:
+            batch_results = {v: self._fetch_variant_annotations(v) for v in uncached_variants}
+            for variant, result in batch_results.items():
+                self.cache.set(variant, result)
+                cached_results[variant] = result
+        return cached_results
 """
 API Client Module
 ================

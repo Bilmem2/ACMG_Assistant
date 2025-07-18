@@ -1,3 +1,82 @@
+class VariantData:
+    def __init__(self, basic_info=None, population_data=None, insilico_data=None, genetic_data=None, functional_data=None, patient_phenotypes=None, clinvar_data=None):
+        self.basic_info = basic_info or {}
+        self.population_data = population_data or {}
+        self.insilico_data = insilico_data or {}
+        self.genetic_data = genetic_data or {}
+        self.functional_data = functional_data or {}
+        self.patient_phenotypes = patient_phenotypes
+        self.clinvar_data = clinvar_data
+
+    @property
+    def gene(self):
+        return self.basic_info.get('gene', None)
+
+    @property
+    def hgvs_c(self):
+        return self.basic_info.get('hgvs_c', None)
+class InframeAnalyzer:
+    def __init__(self):
+        import logging
+        self.logger = logging.getLogger("InframeAnalyzer")
+        self.critical_regions = self._load_critical_regions()
+        self.repeat_regions = self._load_repeat_regions()
+        self.domain_boundaries = self._load_domain_boundaries()
+
+    def evaluate_inframe_deletion(self, variant_data):
+        """Enhanced inframe deletion evaluation"""
+        if self._affects_critical_region(variant_data):
+            return 'PM4'
+        if self._affects_functional_domain(variant_data):
+            return 'PM4'
+        if self._affects_structural_integrity(variant_data):
+            return 'PM4'
+        if self._in_repeat_region(variant_data):
+            return 'BP3'
+        return None
+
+    def _affects_critical_region(self, variant_data):
+        gene = variant_data.basic_info.get('gene', None)
+        hgvs_c = variant_data.basic_info.get('hgvs_c', None)
+        position = self._extract_position(hgvs_c)
+        if position is None:
+            return False
+        if gene in self.critical_regions:
+            for region in self.critical_regions[gene]:
+                if region['start'] <= position <= region['end']:
+                    return True
+        return False
+
+    def _affects_functional_domain(self, variant_data):
+        return False
+
+    def _affects_structural_integrity(self, variant_data):
+        return False
+
+    def _in_repeat_region(self, variant_data):
+        return False
+
+    def _extract_position(self, hgvs_c):
+        import re
+        if not hgvs_c:
+            if hasattr(self, 'logger'):
+                self.logger.warning("hgvs_c is None or empty")
+            return None
+        match = re.search(r'c\.(\d+)', hgvs_c)
+        if match:
+            return int(match.group(1))
+        if hasattr(self, 'logger'):
+            self.logger.warning(f"No position found in hgvs_c: {hgvs_c}")
+        return None
+
+    def _load_critical_regions(self):
+        return {'TP53': [{'start': 730, 'end': 750}]}
+
+    def _load_repeat_regions(self):
+        return {}
+
+    def _load_domain_boundaries(self):
+        return {}
 """
 Evidence Evaluator Module
 =========================
@@ -38,6 +117,11 @@ class EvidenceEvaluator:
         self.test_mode = test_mode
         self.applied_criteria = {}
         self.evidence_details = {}
+        # Yeni modüller entegre ediliyor
+        from core.functional_studies_evaluator import FunctionalStudiesEvaluator
+        from core.phenotype_matcher import PhenotypeMatcher
+        self.functional_studies_evaluator = FunctionalStudiesEvaluator()
+        self.phenotype_matcher = PhenotypeMatcher()
     
     def evaluate_all_criteria(self, variant_data) -> Dict[str, Any]:
         """
@@ -334,19 +418,16 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_ps3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS3 - Functional studies supportive of damaging effect."""
+        # Automated assignment for PS3/BS3 using FunctionalStudiesEvaluator
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
-        
-        functional_studies = variant_data.functional_data.get('functional_studies')
-        
-        if functional_studies == 'damaging':
+        ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
+        if ps3_bs3 == 'PS3':
             result['applies'] = True
-            result['details'] = "Functional studies show damaging effect"
-        elif functional_studies == 'benign':
-            result['details'] = "Functional studies show benign effect - see BS3"
-        elif functional_studies == 'inconclusive':
-            result['details'] = "Functional studies inconclusive"
-        
+            result['details'] = "Functional studies support a damaging effect (PS3)"
+        elif ps3_bs3 == 'BS3':
+            result['details'] = "Functional studies support a benign effect (BS3)"
+        else:
+            result['details'] = "No or inconclusive functional studies data"
         return result
     
     def _evaluate_ps4(self, variant_data) -> Dict[str, Any]:
@@ -742,74 +823,18 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP4 - Patient phenotype highly specific for disease."""
+        # Automated assignment for PP4/BP5 using PhenotypeMatcher
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
-        
-        gene = variant_data.basic_info.get('gene')
-        phenotype_match = variant_data.functional_data.get('phenotype_match', 'no_match')
-        
-        if phenotype_match == 'specific_match':
+        patient_phenotypes = getattr(variant_data, 'patient_phenotypes', None)
+        gene = getattr(variant_data, 'gene', None)
+        pp4_bp5 = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
+        if pp4_bp5 == 'PP4':
             result['applies'] = True
-            result['details'] = f"Patient phenotype highly specific for {gene}-related disease"
-        elif phenotype_match == 'partial_match':
-            result['applies'] = True
-            result['details'] = f"Patient phenotype partially matches {gene}-related disease"
-        elif self.test_mode:
-            # Test mode: Return default result without interaction
-            result['details'] = f"Test mode: Patient phenotype analysis required for PP4 evaluation"
-            result['manual_review'] = True
+            result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
+        elif pp4_bp5 == 'BP5':
+            result['details'] = f"Patient phenotype not consistent with {gene}-related disease (BP5)"
         else:
-            # Interactive mode: Ask user for phenotype evaluation
-            result = self._evaluate_pp4_interactive(variant_data, gene)
-        
-        return result
-    
-    def _evaluate_pp4_interactive(self, variant_data, gene) -> Dict[str, Any]:
-        """Interactive PP4 evaluation with user input."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
-        
-        print(f"\n🔍 PP4 Evaluation: {gene} phenotype match")
-        print("─" * 50)
-        print("QUESTION: How well does the patient phenotype match the known disease?")
-        print()
-        print("📋 Consider:")
-        print(f"   • OMIM phenotype for {gene}")
-        print(f"   • Gene Reviews for {gene}")
-        print(f"   • HPO terms and phenotype specificity")
-        print(f"   • Overlap with other conditions")
-        print()
-        print("OPTIONS:")
-        print("1. Highly specific match (Strong evidence)")
-        print("2. Good match (Supporting evidence)")
-        print("3. Partial/weak match (No PP4)")
-        print("4. No match (No PP4)")
-        print()
-        
-        while True:
-            choice = input("Select option (1-4): ").strip()
-            if choice == '1':
-                result['applies'] = True
-                if self.use_2023_guidelines:
-                    result['strength'] = 'Strong'
-                result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
-                print(f"✅ PP4 applies (Strong): {result['details']}")
-                break
-            elif choice == '2':
-                result['applies'] = True
-                result['details'] = f"Patient phenotype matches {gene}-related disease (PP4)"
-                print(f"✅ PP4 applies (Supporting): {result['details']}")
-                break
-            elif choice == '3':
-                result['details'] = f"Patient phenotype partially matches {gene}-related disease (insufficient for PP4)"
-                print(f"❌ PP4 does not apply: {result['details']}")
-                break
-            elif choice == '4':
-                result['details'] = f"Patient phenotype does not match {gene}-related disease"
-                print(f"❌ PP4 does not apply: {result['details']}")
-                break
-            else:
-                print("❌ Please enter 1, 2, 3, or 4")
-        
+            result['details'] = "No or inconclusive phenotype data"
         return result
     
     def _evaluate_pp5(self, variant_data) -> Dict[str, Any]:
@@ -914,21 +939,14 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bs3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS3 - Functional studies show no effect."""
+        # Automated assignment for BS3 using FunctionalStudiesEvaluator
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
-        
-        functional_studies = variant_data.functional_data.get('functional_studies')
-        
-        if functional_studies == 'benign':
+        ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
+        if ps3_bs3 == 'BS3':
             result['applies'] = True
-            result['details'] = "Functional studies show no damaging effect"
-        elif functional_studies == 'damaging':
-            result['details'] = "Functional studies show damaging effect - see PS3"
-        elif functional_studies == 'inconclusive':
-            result['details'] = "Functional studies inconclusive"
+            result['details'] = "Functional studies support a benign effect (BS3)"
         else:
-            result['details'] = "No functional studies data available"
-        
+            result['details'] = "No or inconclusive functional studies data"
         return result
     
     def _evaluate_bs4(self, variant_data) -> Dict[str, Any]:

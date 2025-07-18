@@ -13,10 +13,10 @@ Last Updated: July 10, 2025
 
 # Version and metadata information
 VERSION_INFO = {
-    'version': '3.1.0',
+    'version': '3.2.0',
     'author': 'Can Sevilmiş',
     'license': 'MIT License',
-    'last_updated': 'July 10, 2025',
+    'last_updated': 'July 18, 2025',
     'guidelines': 'ACMG/AMP 2015 & 2023',
     'description': 'ACMG Variant Classification Assistant with Complete Criteria Implementation',
     'major_features': [
