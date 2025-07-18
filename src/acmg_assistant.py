@@ -458,8 +458,53 @@ chromosome,position,ref_allele,alt_allele,variant_type,consequence,gene
                         'consequence': row.get('consequence',''),
                         'gene': row.get('gene','')
                     }
-                    # Diğer alanlar boş bırakılabilir veya geliştirilebilir
-                    variant_data = VariantData(basic_info=basic_info)
+                    # Ek alanları otomatik olarak ilgili dict'lere aktar
+                    population_data = {}
+                    insilico_data = {}
+                    genetic_data = {}
+                    functional_data = {}
+                    patient_phenotypes = None
+                    clinvar_data = None
+
+                    # Alan isimleri ve eşleşen dict'ler
+                    population_keys = ['gnomad_af', 'exac_af', 'topmed_af']
+                    insilico_keys = ['cadd_phred', 'revel', 'sift', 'polyphen2', 'mutation_taster', 'dann', 'fathmm', 'spliceai_ag_score', 'spliceai_al_score', 'spliceai_dg_score', 'spliceai_dl_score']
+                    genetic_keys = ['segregation', 'de_novo', 'denovo', 'maternity_confirmed', 'paternity_confirmed', 'inheritance']
+                    functional_keys = ['case_control', 'functional_study', 'de_novo', 'denovo']
+                    clinvar_keys = ['clinical_significance']
+
+                    for key in row:
+                        value = row[key]
+                        if key in population_keys:
+                            try:
+                                population_data[key] = float(value) if value not in ('', None) else None
+                            except Exception:
+                                population_data[key] = value
+                        elif key in insilico_keys:
+                            try:
+                                insilico_data[key] = float(value) if value not in ('', None) else None
+                            except Exception:
+                                insilico_data[key] = value
+                        elif key in genetic_keys:
+                            genetic_data[key] = value
+                        elif key in functional_keys:
+                            functional_data[key] = value
+                        elif key in clinvar_keys:
+                            if clinvar_data is None:
+                                clinvar_data = {}
+                            clinvar_data[key] = value
+                        elif key == 'patient_phenotypes':
+                            patient_phenotypes = value
+
+                    variant_data = VariantData(
+                        basic_info=basic_info,
+                        population_data=population_data,
+                        insilico_data=insilico_data,
+                        genetic_data=genetic_data,
+                        functional_data=functional_data,
+                        patient_phenotypes=patient_phenotypes,
+                        clinvar_data=clinvar_data
+                    )
                     evidence_results = assistant._evaluate_evidence(variant_data)
                     classification_result = assistant._classify_variant(evidence_results)
                     report_path = assistant._generate_report(variant_data, evidence_results, classification_result)
