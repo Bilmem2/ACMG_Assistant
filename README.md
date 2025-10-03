@@ -14,7 +14,7 @@
 
 ---
 
-<img width="1098" height="618" alt="image" src="https://github.com/user-attachments/assets/9ef0cc7a-7c25-45e9-b24a-ec859f680a50" />
+![v3 3 0 screenshot](https://github.com/user-attachments/assets/dad9b471-65cd-4ac9-b5da-e5da3ddb9c21)
 Screenshot of the CLI welcome page
 
 ## ⚙️ Key Features
