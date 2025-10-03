@@ -110,12 +110,6 @@ This algorithm integrates **30+ computational prediction tools** across multiple
 - **FITCONS** - Functional information content (multiple cell types)
 - **Combined Metascore** - Custom VAMPP-like weighted combination
 
-### 📈 **VAMPP-Score Integration**
-- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
-- **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
-- **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
-- **Conservation Analysis** - Multi-species phylogenetic conservation scoring
-
 ### 📚 **Data Sources & Integration**
 - **Varsome** - Comprehensive variant annotation platform
 - **ClinVar** - NCBI clinical significance database
@@ -186,7 +180,6 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **Confidence Tracking (v3.3.0)**: Every criterion reports confidence level (high/medium/low/very_low) and data source
 - **Statistical Automation (v3.3.0)**: Automated Fisher's Exact Test (PS4) and LOD scoring (PP1/BS4)
 - **Enhanced Validation (v3.3.0)**: Stricter PS2 2023 upgrade (both parents required), PP5/BP6 expert panel requirements
-- **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
 - **Gene-Specific PM2**: Custom population frequency thresholds per gene
 - **Statistical PS4**: Fisher's Exact Test for case-control prevalence analysis
 - **Conservation Analysis**: Multi-species phylogenetic conservation scoring
