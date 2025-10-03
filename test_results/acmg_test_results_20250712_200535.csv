@@ -1,8 +1,0 @@
-variant_id,gene,variant_type,true_label,expected_label,predicted_label,exact_match,close_match,expected_match,raw_output
-BRCA1_c.68_69delAG,BRCA1,frameshift_variant,Pathogenic,Pathogenic,Pathogenic,True,True,True,"Classification: Pathogenic, Confidence: High"
-TP53_c.743G>A,TP53,missense_variant,Likely pathogenic,Likely pathogenic,VUS,False,False,False,"Classification: VUS, Confidence: N/A"
-BRCA2_c.5946delT,BRCA2,frameshift_variant,Pathogenic,Pathogenic,Pathogenic,True,True,True,"Classification: Pathogenic, Confidence: High"
-BRCA1_c.3113G>A,BRCA1,missense_variant,Benign,Benign,Likely Benign,False,True,False,"Classification: Likely Benign, Confidence: Medium"
-TP53_c.1010G>A,TP53,missense_variant,Uncertain significance,VUS,VUS,False,True,True,"Classification: VUS, Confidence: N/A"
-CFTR_c.1521_1523delCTT,CFTR,inframe_deletion,Pathogenic,Pathogenic,VUS,False,False,False,"Classification: VUS, Confidence: N/A"
-APOE_c.334T>C,APOE,missense_variant,Benign,Benign,Benign,True,True,True,"Classification: Benign, Confidence: High"

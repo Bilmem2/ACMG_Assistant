@@ -69,8 +69,8 @@ def build_executable():
         print("✅ PyInstaller installed successfully")
     
     # Build configuration
-    exe_name = "ACMG_Assistant"
-    dist_folder = "ACMG_Assistant_v3.0.0"
+    exe_name = "ACMG_Assistant_v3.2.0"
+    dist_folder = "ACMG_Assistant_v3.2.0"
     
     # PyInstaller command - Console app for better interaction
     cmd = [
@@ -99,29 +99,33 @@ def build_executable():
         # Run PyInstaller
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         print("✅ Build completed successfully!")
-        
+        print("PyInstaller stdout:")
+        print(result.stdout)
+        print("PyInstaller stderr:")
+        print(result.stderr)
+
         # Change back to original directory for distribution
         os.chdir(original_dir)
-        
+
         # Create distribution folder
         create_distribution_folder(exe_name, dist_folder)
-        
+
         print(f"\n🎉 Executable created successfully!")
         print(f"📁 Location: Desktop/{dist_folder}")
         print(f"📝 Instructions:")
         print(f"   1. Test the executable in the Desktop/{dist_folder} folder")
         print(f"   2. Zip the entire {dist_folder} folder for distribution")
         print(f"   3. Share with users who don't have Python installed")
-        
+
     except subprocess.CalledProcessError as e:
         print(f"❌ Build failed: {e}")
-        if e.stdout:
-            print(f"stdout: {e.stdout}")
-        if e.stderr:
-            print(f"stderr: {e.stderr}")
+        print("PyInstaller stdout:")
+        print(e.stdout)
+        print("PyInstaller stderr:")
+        print(e.stderr)
         os.chdir(original_dir)
         return False
-    
+
     return True
 
 def create_distribution_folder(exe_name, dist_folder):

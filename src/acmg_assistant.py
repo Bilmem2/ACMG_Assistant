@@ -27,7 +27,8 @@ import json
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
-# Import custom modules
+
+
 from core.variant_data import VariantData
 from core.acmg_classifier import ACMGClassifier
 from core.evidence_evaluator import EvidenceEvaluator
@@ -70,28 +71,109 @@ class ACMGAssistant:
         
         self.report_generator = ReportGenerator(output_dir=output_dir)
         
-        # Print welcome message
-        self._print_welcome_message()
+        # Print welcome message (show disclaimer)
+        self._print_welcome_message(show_disclaimer=True)
     
-    def _print_welcome_message(self):
-        """Print welcome message and guidelines information."""
+    def _print_welcome_message(self, show_disclaimer=False):
+        """Print English welcome message and interactive mode selection info. Optionally show disclaimer."""
         print(f"\n{COLORAMA_COLORS['CYAN']}{'='*80}")
         print(f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}🧬 ACMG Variant Classification Assistant v{VERSION_INFO['version']}")
         print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
-        print(f"{COLORAMA_COLORS['YELLOW']}Guidelines: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}ACMG/AMP {'2023' if self.use_2023_guidelines else '2015'}")
-        print(f"{COLORAMA_COLORS['YELLOW']}Mode: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}{'Test Mode' if self.test_mode else 'Standard Mode'}")
-        print(f"{COLORAMA_COLORS['YELLOW']}Date: {COLORAMA_COLORS['WHITE']}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Available Modes:{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}  • ACMG/AMP 2015 (default)        →  Starts in standard mode")
+        print(f"{COLORAMA_COLORS['WHITE']}  • ACMG/AMP 2023                  →  Start with '--acmg-2023' or select in exe")
+        print(f"{COLORAMA_COLORS['WHITE']}  • Batch Mode (Multiple Variants)  →  Start with '--batch file.csv'")
+        print(f"{COLORAMA_COLORS['YELLOW']}Active Mode: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}ACMG/AMP {'2023' if self.use_2023_guidelines else '2015'}{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Run Type: {COLORAMA_COLORS['WHITE']}{COLORAMA_COLORS['BOLD']}{'Test Mode' if self.test_mode else 'Standard Mode'}{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['YELLOW']}Date: {COLORAMA_COLORS['WHITE']}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{COLORAMA_COLORS['RESET']}")
         print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
-        print(f"{COLORAMA_COLORS['GREEN']}Created by: {VERSION_INFO['author']}")
-        
-        if not self.test_mode:
-            print(f"\n{COLORAMA_COLORS['RED']}{COLORAMA_COLORS['BOLD']}⚠️  DISCLAIMER:")
-            print(f"{COLORAMA_COLORS['RED']}This tool is for research and educational purposes only.")
-            print(f"{COLORAMA_COLORS['RED']}Clinical variant interpretations must be validated by certified professionals.")
-            print(f"{COLORAMA_COLORS['RED']}Always cross-check results with primary sources (ClinVar, Varsome).")
-            print(f"\n{COLORAMA_COLORS['YELLOW']}{COLORAMA_COLORS['BOLD']}📝 IMPORTANT NOTE:")
-            print(f"{COLORAMA_COLORS['YELLOW']}All in silico scores must be entered manually - no automatic retrieval.")
-            print(f"{COLORAMA_COLORS['CYAN']}{'='*80}")
+        print(f"{COLORAMA_COLORS['GREEN']}Created by: {VERSION_INFO['author']}{COLORAMA_COLORS['RESET']}")
+
+        print(f"\n{COLORAMA_COLORS['YELLOW']}Mode Selection Guide:{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}  • Press Enter to start in default mode (ACMG/AMP 2015).{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}  • Or type one of the following commands to switch mode:{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}      --acmg-2023   → ACMG/AMP 2023 mode{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}      --batch file.csv → Batch mode (CSV file required){COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}  • In exe, you can select mode from the main screen.{COLORAMA_COLORS['RESET']}")
+
+
+        # Show disclaimer only on initial welcome page
+        if show_disclaimer:
+            print(f"\n{COLORAMA_COLORS['RED']}{COLORAMA_COLORS['BOLD']}⚠️  DISCLAIMER:{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['RED']}This tool is for research and educational purposes only.{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['RED']}Clinical variant interpretations must be validated by certified professionals.{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['RED']}Always cross-check results with primary sources (ClinVar, Varsome).{COLORAMA_COLORS['RESET']}")
+            print(f"\n{COLORAMA_COLORS['YELLOW']}{COLORAMA_COLORS['BOLD']}📝 IMPORTANT NOTE:{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['YELLOW']}All in silico scores must be entered manually - no automatic retrieval.{COLORAMA_COLORS['RESET']}")
+            print(f"{COLORAMA_COLORS['CYAN']}{'='*80}{COLORAMA_COLORS['RESET']}")
+
+
+        # Interactive mode selection (only if not test or batch mode)
+        if not self.test_mode and not getattr(self, 'batch_mode', False):
+            print(f"\n{COLORAMA_COLORS['CYAN']}To continue, press Enter for default mode or type a command to switch mode.{COLORAMA_COLORS['RESET']}")
+            while True:
+                valid_modes = {
+                    'default': None,
+                    '--acmg-2023': 'acmg2023',
+                    '--batch': 'batch'
+                }
+                user_input = input(f"{COLORAMA_COLORS['YELLOW']}Mode selection (Enter for default): {COLORAMA_COLORS['RESET']}" ).strip()
+                mode_message = None
+                selected_mode = 'default'
+                batch_file = None
+                if user_input:
+                    if user_input.startswith('--batch'):
+                        import re
+                        match = re.match(r'--batch\s+(\S+)', user_input)
+                        if match:
+                            candidate_file = match.group(1)
+                            import os
+                            # Dosya var mı kontrol et
+                            if not os.path.isfile(candidate_file):
+                                candidate_file_path = os.path.join(os.getcwd(), candidate_file)
+                                if not os.path.isfile(candidate_file_path):
+                                    print(f"{COLORAMA_COLORS['RED']}Batch file not found: {candidate_file}{COLORAMA_COLORS['RESET']}")
+                                    print(f"{COLORAMA_COLORS['YELLOW']}Please provide the file name (e.g. batch.csv) if the file is in the current directory, or the full path (e.g. C:/path/to/batch.csv) if it is elsewhere.{COLORAMA_COLORS['RESET']}")
+                                    continue  # Dosya yoksa tekrar mod seçimine dön
+                                else:
+                                    batch_file = candidate_file_path
+                            else:
+                                batch_file = candidate_file
+                            selected_mode = 'batch'
+                        else:
+                            print(f"{COLORAMA_COLORS['RED']}Invalid batch mode command. Usage: --batch file.csv{COLORAMA_COLORS['RESET']}")
+                            continue  # Return to mode selection
+                    elif user_input == '--acmg-2023':
+                        selected_mode = 'acmg2023'
+                    else:
+                        print(f"{COLORAMA_COLORS['RED']}Invalid mode selection. Please try again.{COLORAMA_COLORS['RESET']}")
+                        continue  # Return to mode selection
+
+                # Apply selected mode
+                if selected_mode == 'acmg2023':
+                    self.use_2023_guidelines = True
+                    mode_message = f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}You are now in ACMG/AMP 2023 mode.{COLORAMA_COLORS['RESET']}"
+                elif selected_mode == 'batch' and batch_file:
+                    self.batch_mode = True
+                    self.batch_file = batch_file
+                    mode_message = f"{COLORAMA_COLORS['YELLOW']}{COLORAMA_COLORS['BOLD']}You are now in Batch Mode. File: {self.batch_file}{COLORAMA_COLORS['RESET']}"
+                else:
+                    mode_message = f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}You are now in ACMG/AMP 2015 (default) mode.{COLORAMA_COLORS['RESET']}"
+                print(f"{COLORAMA_COLORS['GREEN']}Mode switched according to your selection.{COLORAMA_COLORS['RESET']}")
+                if mode_message:
+                    print(f"\n{mode_message}")
+                break  # Exit loop after valid selection
+
+        # Show mode message for direct mode selection (non-interactive)
+        elif self.test_mode:
+            print(f"\n{COLORAMA_COLORS['MAGENTA']}{COLORAMA_COLORS['BOLD']}You are now in Test Mode.{COLORAMA_COLORS['RESET']}")
+        elif getattr(self, 'batch_mode', False):
+            print(f"\n{COLORAMA_COLORS['YELLOW']}{COLORAMA_COLORS['BOLD']}You are now in Batch Mode. File: {getattr(self, 'batch_file', 'N/A')}{COLORAMA_COLORS['RESET']}")
+        elif self.use_2023_guidelines:
+            print(f"\n{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}You are now in ACMG/AMP 2023 mode.{COLORAMA_COLORS['RESET']}")
+        else:
+            print(f"\n{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}You are now in ACMG/AMP 2015 (default) mode.{COLORAMA_COLORS['RESET']}")
+
     
     def run(self):
         """Main execution method."""
@@ -299,36 +381,147 @@ Examples:
   python acmg_assistant.py --acmg-2023        # Use ACMG 2023 guidelines
   python acmg_assistant.py --test             # Run in test mode
   python acmg_assistant.py --test --acmg-2023 # Test mode with 2023 guidelines
-        """
+  python acmg_assistant.py --batch variants.csv # Batch mode (CSV)
+
+Batch dosya formatı örneği:
+chromosome,position,ref_allele,alt_allele,variant_type,consequence,gene
+17,43093464,C,T,missense,missense_variant,TP53
+13,32906641,G,A,frameshift,frameshift_variant,BRCA2
+"""
     )
-    
+
     parser.add_argument(
         '--acmg-2023',
         action='store_true',
         help='Use ACMG/AMP 2023 guidelines instead of 2015'
     )
-    
+
     parser.add_argument(
         '--test',
         action='store_true',
         help='Run in test mode with sample data'
     )
-    
+
+    parser.add_argument(
+        '--batch',
+        metavar='BATCH_FILE',
+        type=str,
+        help='Batch mode: analyze multiple variants from a CSV file'
+    )
+
     parser.add_argument(
         '--version',
         action='version',
         version=f'ACMG Assistant v{VERSION_INFO["version"]}'
     )
-    
+
     args = parser.parse_args()
-    
-    # Create and run assistant
+
+    # Prevent test mode in exe
+    test_mode_arg = args.test
+    if getattr(sys, 'frozen', False) and test_mode_arg:
+        print(f"{COLORAMA_COLORS['RED']}Test Mode is not available in exe. Please use terminal to access Test Mode.{COLORAMA_COLORS['RESET']}")
+        test_mode_arg = False
+
     assistant = ACMGAssistant(
         use_2023_guidelines=args.acmg_2023,
-        test_mode=args.test
+        test_mode=test_mode_arg
     )
-    
-    assistant.run()
+
+    if args.batch:
+        import csv
+        import os
+        batch_file = args.batch
+        # Dosya yolu kontrolü: önce çalışma dizininde, sonra tam yol olarak dene
+        if not os.path.isfile(batch_file):
+            # Çalışma dizininde yoksa, tam yol olarak dene
+            batch_file_path = os.path.join(os.getcwd(), batch_file)
+            if os.path.isfile(batch_file_path):
+                batch_file = batch_file_path
+            else:
+                print(f"{COLORAMA_COLORS['RED']}Batch file not found: {args.batch}{COLORAMA_COLORS['RESET']}")
+                sys.exit(1)
+        print(f"\n{COLORAMA_COLORS['CYAN']}Batch modunda analiz başlatılıyor: {batch_file}{COLORAMA_COLORS['RESET']}")
+        try:
+            with open(batch_file, newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                results = []
+                for i, row in enumerate(reader, 1):
+                    print(f"\n{COLORAMA_COLORS['YELLOW']}[{i}] Varyant analiz ediliyor: {row.get('gene','?')} {row.get('chromosome','?')}:{row.get('position','?')}{COLORAMA_COLORS['RESET']}")
+                    # CSV'den gelen verilerle otomatik analiz
+                    basic_info = {
+                        'chromosome': row.get('chromosome',''),
+                        'position': row.get('position',''),
+                        'ref_allele': row.get('ref_allele',''),
+                        'alt_allele': row.get('alt_allele',''),
+                        'variant_type': row.get('variant_type',''),
+                        'consequence': row.get('consequence',''),
+                        'gene': row.get('gene','')
+                    }
+                    # Ek alanları otomatik olarak ilgili dict'lere aktar
+                    population_data = {}
+                    insilico_data = {}
+                    genetic_data = {}
+                    functional_data = {}
+                    patient_phenotypes = None
+                    clinvar_data = None
+
+                    # Alan isimleri ve eşleşen dict'ler
+                    population_keys = ['gnomad_af', 'exac_af', 'topmed_af']
+                    insilico_keys = ['cadd_phred', 'revel', 'sift', 'polyphen2', 'mutation_taster', 'dann', 'fathmm', 'spliceai_ag_score', 'spliceai_al_score', 'spliceai_dg_score', 'spliceai_dl_score']
+                    genetic_keys = ['segregation', 'de_novo', 'denovo', 'maternity_confirmed', 'paternity_confirmed', 'inheritance']
+                    functional_keys = ['case_control', 'functional_study', 'de_novo', 'denovo']
+                    clinvar_keys = ['clinical_significance']
+
+                    for key in row:
+                        value = row[key]
+                        if key in population_keys:
+                            try:
+                                population_data[key] = float(value) if value not in ('', None) else None
+                            except Exception:
+                                population_data[key] = value
+                        elif key in insilico_keys:
+                            try:
+                                insilico_data[key] = float(value) if value not in ('', None) else None
+                            except Exception:
+                                insilico_data[key] = value
+                        elif key in genetic_keys:
+                            genetic_data[key] = value
+                        elif key in functional_keys:
+                            functional_data[key] = value
+                        elif key in clinvar_keys:
+                            if clinvar_data is None:
+                                clinvar_data = {}
+                            clinvar_data[key] = value
+                        elif key == 'patient_phenotypes':
+                            patient_phenotypes = value
+
+                    variant_data = VariantData(
+                        basic_info=basic_info,
+                        population_data=population_data,
+                        insilico_data=insilico_data,
+                        genetic_data=genetic_data,
+                        functional_data=functional_data,
+                        patient_phenotypes=patient_phenotypes,
+                        clinvar_data=clinvar_data
+                    )
+                    evidence_results = assistant._evaluate_evidence(variant_data)
+                    classification_result = assistant._classify_variant(evidence_results)
+                    report_path = assistant._generate_report(variant_data, evidence_results, classification_result)
+                    assistant._display_results(classification_result, report_path, variant_data)
+                    results.append({
+                        'gene': basic_info['gene'],
+                        'chromosome': basic_info['chromosome'],
+                        'position': basic_info['position'],
+                        'classification': classification_result['classification'],
+                        'confidence': classification_result.get('confidence',''),
+                        'report': report_path
+                    })
+                print(f"\n{COLORAMA_COLORS['GREEN']}Batch analiz tamamlandı. Toplam {len(results)} varyant işlendi.{COLORAMA_COLORS['RESET']}")
+        except Exception as e:
+            print(f"{COLORAMA_COLORS['RED']}Batch dosyası okunamadı veya hata oluştu: {str(e)}{COLORAMA_COLORS['RESET']}")
+    else:
+        assistant.run()
 
 if __name__ == "__main__":
     main()

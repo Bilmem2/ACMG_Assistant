@@ -1,3 +1,59 @@
+class ConflictResolver:
+    def resolve_conflict(self, pathogenic_evidence, benign_evidence, pathogenic_score, benign_score):
+        if pathogenic_score > benign_score:
+            return "Likely Pathogenic (conflict resolved)"
+        elif benign_score > pathogenic_score:
+            return "Likely Benign (conflict resolved)"
+        else:
+            return "Uncertain Significance (conflict unresolved)"
+
+class WeightedACMGClassifier:
+    def __init__(self):
+        self.evidence_weights = self._load_evidence_weights()
+        self.conflict_resolver = ConflictResolver()
+    
+    def _load_evidence_weights(self):
+        # Example weights, can be loaded from config file
+        return {
+            'PVS': 8.0,
+            'PS': 4.0,
+            'PM': 2.0,
+            'PP': 1.0,
+            'BA': 8.0,
+            'BS': 4.0,
+            'BP': 1.0
+        }
+    
+    def _get_evidence_confidence(self, evidence):
+        # Placeholder: always 1.0, can be extended for real confidence
+        return 1.0
+    
+    def _calculate_weighted_score(self, evidence_list):
+        score = 0
+        for evidence in evidence_list:
+            base_weight = self.evidence_weights.get(evidence[:3], 1.0)
+            confidence = self._get_evidence_confidence(evidence)
+            score += base_weight * confidence
+        return score
+    
+    def classify_variant_weighted(self, evidence_list):
+        pathogenic_evidence = [e for e in evidence_list if e.startswith(('PVS', 'PS', 'PM', 'PP'))]
+        benign_evidence = [e for e in evidence_list if e.startswith(('BA', 'BS', 'BP'))]
+        pathogenic_score = self._calculate_weighted_score(pathogenic_evidence)
+        benign_score = self._calculate_weighted_score(benign_evidence)
+        if pathogenic_score > 0 and benign_score > 0:
+            return self.conflict_resolver.resolve_conflict(
+                pathogenic_evidence, benign_evidence, pathogenic_score, benign_score
+            )
+        return self._determine_classification(pathogenic_score, benign_score)
+    
+    def _determine_classification(self, pathogenic_score, benign_score):
+        if pathogenic_score > benign_score and pathogenic_score >= 4:
+            return "Pathogenic"
+        elif benign_score > pathogenic_score and benign_score >= 4:
+            return "Benign"
+        else:
+            return "Uncertain Significance"
 """
 ACMG Classifier Module
 ====================

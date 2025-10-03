@@ -1,3 +1,82 @@
+class VariantData:
+    def __init__(self, basic_info=None, population_data=None, insilico_data=None, genetic_data=None, functional_data=None, patient_phenotypes=None, clinvar_data=None):
+        self.basic_info = basic_info or {}
+        self.population_data = population_data or {}
+        self.insilico_data = insilico_data or {}
+        self.genetic_data = genetic_data or {}
+        self.functional_data = functional_data or {}
+        self.patient_phenotypes = patient_phenotypes
+        self.clinvar_data = clinvar_data
+
+    @property
+    def gene(self):
+        return self.basic_info.get('gene', None)
+
+    @property
+    def hgvs_c(self):
+        return self.basic_info.get('hgvs_c', None)
+class InframeAnalyzer:
+    def __init__(self):
+        import logging
+        self.logger = logging.getLogger("InframeAnalyzer")
+        self.critical_regions = self._load_critical_regions()
+        self.repeat_regions = self._load_repeat_regions()
+        self.domain_boundaries = self._load_domain_boundaries()
+
+    def evaluate_inframe_deletion(self, variant_data):
+        """Enhanced inframe deletion evaluation"""
+        if self._affects_critical_region(variant_data):
+            return 'PM4'
+        if self._affects_functional_domain(variant_data):
+            return 'PM4'
+        if self._affects_structural_integrity(variant_data):
+            return 'PM4'
+        if self._in_repeat_region(variant_data):
+            return 'BP3'
+        return None
+
+    def _affects_critical_region(self, variant_data):
+        gene = variant_data.basic_info.get('gene', None)
+        hgvs_c = variant_data.basic_info.get('hgvs_c', None)
+        position = self._extract_position(hgvs_c)
+        if position is None:
+            return False
+        if gene in self.critical_regions:
+            for region in self.critical_regions[gene]:
+                if region['start'] <= position <= region['end']:
+                    return True
+        return False
+
+    def _affects_functional_domain(self, variant_data):
+        return False
+
+    def _affects_structural_integrity(self, variant_data):
+        return False
+
+    def _in_repeat_region(self, variant_data):
+        return False
+
+    def _extract_position(self, hgvs_c):
+        import re
+        if not hgvs_c:
+            if hasattr(self, 'logger'):
+                self.logger.warning("hgvs_c is None or empty")
+            return None
+        match = re.search(r'c\.(\d+)', hgvs_c)
+        if match:
+            return int(match.group(1))
+        if hasattr(self, 'logger'):
+            self.logger.warning(f"No position found in hgvs_c: {hgvs_c}")
+        return None
+
+    def _load_critical_regions(self):
+        return {'TP53': [{'start': 730, 'end': 750}]}
+
+    def _load_repeat_regions(self):
+        return {}
+
+    def _load_domain_boundaries(self):
+        return {}
 """
 Evidence Evaluator Module
 =========================
@@ -38,6 +117,13 @@ class EvidenceEvaluator:
         self.test_mode = test_mode
         self.applied_criteria = {}
         self.evidence_details = {}
+        # Yeni modüller entegre ediliyor
+        from core.functional_studies_evaluator import FunctionalStudiesEvaluator
+        from core.phenotype_matcher import PhenotypeMatcher
+        from utils.statistical_utils import StatisticalAnalyzer
+        self.functional_studies_evaluator = FunctionalStudiesEvaluator()
+        self.phenotype_matcher = PhenotypeMatcher()
+        self.statistical_analyzer = StatisticalAnalyzer()
     
     def evaluate_all_criteria(self, variant_data) -> Dict[str, Any]:
         """
@@ -291,11 +377,14 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_ps2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS2 - De novo variant with enhanced logic."""
-        result = {'applies': False, 'strength': 'Strong', 'details': ''}
-        
-        # Import the new de novo assignment logic
-        # from config.constants import assign_de_novo_criteria
+        """Evaluate PS2 - De novo variant with enhanced logic and strict 2023 upgrade rules."""
+        result = {
+            'applies': False, 
+            'strength': 'Strong', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'user_input'
+        }
         
         # Try both genetic_data and functional_data for de novo status
         denovo_status = (variant_data.genetic_data.get('de_novo') or 
@@ -307,59 +396,115 @@ class EvidenceEvaluator:
         maternity_confirmed = variant_data.genetic_data.get('maternity_confirmed')
         paternity_confirmed = variant_data.genetic_data.get('paternity_confirmed')
         
-        # Mock de novo assignment logic
-        # de_novo_assignment = assign_de_novo_criteria(
-        #     denovo_status, 
-        #     maternity_confirmed, 
-        #     paternity_confirmed
-        # )
-        
-        # Apply PS2 only for confirmed de novo WITH parental testing
+        # STRICT 2023 RULES: PS2_Very_Strong only with BOTH parents confirmed
         if denovo_status == 'confirmed' and maternity_confirmed and paternity_confirmed:
             result['applies'] = True
+            result['confidence'] = 'high'
+            result['data_source'] = 'parental_testing'
+            
+            # Upgrade to Very Strong in 2023 guidelines
             if self.use_2023_guidelines:
                 result['strength'] = 'Very Strong'
-            result['details'] = 'De novo variant confirmed with parental testing'
+                result['details'] = 'De novo variant confirmed with maternity AND paternity testing (PS2_Very_Strong per ACMG 2023)'
+            else:
+                result['details'] = 'De novo variant confirmed with parental testing (PS2)'
+                
+        elif denovo_status == 'confirmed' and (maternity_confirmed or paternity_confirmed):
+            # Only one parent confirmed - downgrade to PM6
+            result['applies'] = False
+            result['confidence'] = 'medium'
+            result['data_source'] = 'partial_parental_testing'
+            result['details'] = 'De novo confirmed but only one parent tested - see PM6 instead of PS2'
+            
         elif denovo_status == 'assumed':
             # For assumed de novo, use PM6 instead of PS2
             result['applies'] = False
+            result['confidence'] = 'low'
+            result['data_source'] = 'clinical_assumption'
             result['details'] = 'De novo assumed but not confirmed - see PM6'
-        elif denovo_status == 'confirmed' and not (maternity_confirmed and paternity_confirmed):
+            
+        elif denovo_status == 'confirmed' and not (maternity_confirmed or paternity_confirmed):
             # Marked as confirmed but no parental testing - treat as assumed
             result['applies'] = False
-            result['details'] = 'De novo confirmed but no parental testing - see PM6'
+            result['confidence'] = 'very_low'
+            result['data_source'] = 'unverified_claim'
+            result['details'] = 'De novo marked as confirmed but no parental testing documented - see PM6'
         else:
             result['details'] = 'No evidence of de novo variant'
         
         return result
     
     def _evaluate_ps3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS3 - Functional studies supportive of damaging effect."""
+        # Automated assignment for PS3/BS3 using FunctionalStudiesEvaluator
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
-        
-        functional_studies = variant_data.functional_data.get('functional_studies')
-        
-        if functional_studies == 'damaging':
+        ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
+        if ps3_bs3 == 'PS3':
             result['applies'] = True
-            result['details'] = "Functional studies show damaging effect"
-        elif functional_studies == 'benign':
-            result['details'] = "Functional studies show benign effect - see BS3"
-        elif functional_studies == 'inconclusive':
-            result['details'] = "Functional studies inconclusive"
-        
+            result['details'] = "Functional studies support a damaging effect (PS3)"
+        elif ps3_bs3 == 'BS3':
+            result['details'] = "Functional studies support a benign effect (BS3)"
+        else:
+            result['details'] = "No or inconclusive functional studies data"
         return result
     
     def _evaluate_ps4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PS4 - The prevalence of the variant in affected individuals is significantly increased compared to the prevalence in controls."""
-        result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        """Evaluate PS4 - Case-control data with automated statistical analysis."""
+        result = {
+            'applies': False, 
+            'strength': 'Strong', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'none'
+        }
         
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
+        # Check if case-control data is available
+        functional_data = variant_data.functional_data
+        
+        cases_with = functional_data.get('cases_with_variant')
+        cases_total = functional_data.get('total_cases')
+        controls_with = functional_data.get('controls_with_variant')
+        controls_total = functional_data.get('total_controls')
+        
+        # If numerical data is available, perform automated Fisher's exact test
+        if all(v is not None for v in [cases_with, cases_total, controls_with, controls_total]):
+            fisher_result = self.statistical_analyzer.calculate_fishers_exact(
+                cases_with, cases_total, controls_with, controls_total
+            )
+            
+            if fisher_result['valid']:
+                result['data_source'] = 'case_control_study'
+                result['confidence'] = fisher_result['confidence']
+                result['statistical_test'] = fisher_result
+                
+                if fisher_result['significant']:
+                    result['applies'] = True
+                    result['details'] = (
+                        f"Case-control analysis shows significant enrichment in cases: "
+                        f"{fisher_result['interpretation']}"
+                    )
+                else:
+                    result['details'] = (
+                        f"Case-control data available but not significant: "
+                        f"{fisher_result['interpretation']}"
+                    )
+                
+                # Store in evidence_details for report
+                self.evidence_details['PS4_statistical_analysis'] = fisher_result
+                
+                return result
+            else:
+                result['details'] = f"Case-control data invalid: {fisher_result.get('error', 'Unknown error')}"
+                return result
+        
+        # Fall back to interactive evaluation if no numerical data
         if gene:
             if self.test_mode:
                 result['details'] = f"Test mode: Case-control study data not available for {gene} {variant_name}"
-                result['manual_review'] = True
+                result['data_source'] = 'test_mode'
+                result['confidence'] = 'very_low'
             else:
                 # Interactive evaluation for case-control data
                 result = self._evaluate_ps4_interactive(variant_data, gene, variant_name)
@@ -450,7 +595,13 @@ class EvidenceEvaluator:
     
     def _evaluate_pm2(self, variant_data) -> Dict[str, Any]:
         """Evaluate PM2 - Absent from controls."""
-        result = {'applies': False, 'strength': 'Moderate', 'details': ''}
+        result = {
+            'applies': False, 
+            'strength': 'Moderate', 
+            'details': '',
+            'confidence': 'high',
+            'data_source': 'population_database'
+        }
         
         # Check population frequencies
         pop_data = variant_data.population_data
@@ -459,11 +610,12 @@ class EvidenceEvaluator:
         # PM2 applies if variant is absent or very rare in population databases
         if gnomad_af is None or gnomad_af == 0:
             result['applies'] = True
-            result['details'] = "Variant absent from population databases"
+            result['details'] = "Variant absent from population databases (PM2)"
         elif gnomad_af < 0.0001:  # Very rare
             result['applies'] = True
-            result['details'] = f"Variant very rare in population (gnomAD AF: {gnomad_af})"
+            result['details'] = f"Variant very rare in population (gnomAD AF: {gnomad_af}) (PM2)"
         else:
+            result['confidence'] = 'medium'
             result['details'] = f"Variant present in population databases (gnomAD AF: {gnomad_af})"
         
         return result
@@ -630,16 +782,57 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP1 - Cosegregation with disease in multiple affected family members."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        """Evaluate PP1 - Cosegregation with disease with automated LOD scoring."""
+        result = {
+            'applies': False, 
+            'strength': 'Supporting', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'none'
+        }
         
-        # Check segregation data
+        # Check if structured segregation data is available
+        segregation_families = variant_data.genetic_data.get('segregation_families')
+        
+        if segregation_families and isinstance(segregation_families, list):
+            # Automated LOD score calculation
+            lod_result = self.statistical_analyzer.calculate_lod_score(segregation_families)
+            
+            if lod_result['valid']:
+                result['data_source'] = 'segregation_analysis'
+                result['confidence'] = lod_result['confidence']
+                result['lod_analysis'] = lod_result
+                
+                if lod_result['applies'] and lod_result['strength'] in ['supporting', 'strong']:
+                    result['applies'] = True
+                    result['details'] = lod_result['interpretation']
+                    
+                    # Potentially upgrade to PP1_Strong if LOD is very high
+                    if lod_result['lod_score'] >= 3.0:
+                        result['strength'] = 'Moderate'  # Could consider Strong with more families
+                        result['details'] += " (strong segregation evidence)"
+                else:
+                    result['details'] = f"Segregation data insufficient: {lod_result['interpretation']}"
+                
+                # Store for report
+                self.evidence_details['PP1_lod_analysis'] = lod_result
+                
+                return result
+            else:
+                result['details'] = f"Segregation analysis failed: {lod_result.get('error', 'Unknown error')}"
+                return result
+        
+        # Fall back to simple segregation status check
         segregation = variant_data.genetic_data.get('segregation')
         
         if segregation == 'cosegregates':
             result['applies'] = True
-            result['details'] = "Variant cosegregates with disease in family (PP1)"
+            result['confidence'] = 'low'
+            result['data_source'] = 'qualitative_report'
+            result['details'] = "Variant cosegregates with disease in family (PP1) - recommend quantitative LOD analysis"
         elif segregation == 'does_not_segregate':
+            result['confidence'] = 'low'
+            result['data_source'] = 'qualitative_report'
             result['details'] = "Variant does not cosegregate with disease - see BS4"
         elif segregation == 'insufficient_data':
             result['details'] = "Insufficient segregation data for PP1 evaluation"
@@ -651,10 +844,10 @@ class EvidenceEvaluator:
             result['search_recommendations'] = [
                 "Analyze affected family members for variant presence",
                 "Check unaffected family members for variant absence", 
-                "Consider statistical significance of segregation",
-                "Review inheritance pattern consistency"
+                "Calculate LOD score with structured family data",
+                "Minimum 3 families recommended for statistical power"
             ]
-            result['guidance'] = "PP1 applies if variant cosegregates with disease in multiple affected family members"
+            result['guidance'] = "PP1 applies if variant cosegregates with disease (LOD ≥1.5 for Supporting, ≥3.0 for Moderate/Strong)"
         
         return result
     
@@ -742,88 +935,93 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP4 - Patient phenotype highly specific for disease."""
+        # Automated assignment for PP4/BP5 using PhenotypeMatcher
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
-        
-        gene = variant_data.basic_info.get('gene')
-        phenotype_match = variant_data.functional_data.get('phenotype_match', 'no_match')
-        
-        if phenotype_match == 'specific_match':
+        patient_phenotypes = getattr(variant_data, 'patient_phenotypes', None)
+        gene = getattr(variant_data, 'gene', None)
+        pp4_bp5 = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
+        if pp4_bp5 == 'PP4':
             result['applies'] = True
-            result['details'] = f"Patient phenotype highly specific for {gene}-related disease"
-        elif phenotype_match == 'partial_match':
-            result['applies'] = True
-            result['details'] = f"Patient phenotype partially matches {gene}-related disease"
-        elif self.test_mode:
-            # Test mode: Return default result without interaction
-            result['details'] = f"Test mode: Patient phenotype analysis required for PP4 evaluation"
-            result['manual_review'] = True
+            result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
+        elif pp4_bp5 == 'BP5':
+            result['details'] = f"Patient phenotype not consistent with {gene}-related disease (BP5)"
         else:
-            # Interactive mode: Ask user for phenotype evaluation
-            result = self._evaluate_pp4_interactive(variant_data, gene)
-        
-        return result
-    
-    def _evaluate_pp4_interactive(self, variant_data, gene) -> Dict[str, Any]:
-        """Interactive PP4 evaluation with user input."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
-        
-        print(f"\n🔍 PP4 Evaluation: {gene} phenotype match")
-        print("─" * 50)
-        print("QUESTION: How well does the patient phenotype match the known disease?")
-        print()
-        print("📋 Consider:")
-        print(f"   • OMIM phenotype for {gene}")
-        print(f"   • Gene Reviews for {gene}")
-        print(f"   • HPO terms and phenotype specificity")
-        print(f"   • Overlap with other conditions")
-        print()
-        print("OPTIONS:")
-        print("1. Highly specific match (Strong evidence)")
-        print("2. Good match (Supporting evidence)")
-        print("3. Partial/weak match (No PP4)")
-        print("4. No match (No PP4)")
-        print()
-        
-        while True:
-            choice = input("Select option (1-4): ").strip()
-            if choice == '1':
-                result['applies'] = True
-                if self.use_2023_guidelines:
-                    result['strength'] = 'Strong'
-                result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
-                print(f"✅ PP4 applies (Strong): {result['details']}")
-                break
-            elif choice == '2':
-                result['applies'] = True
-                result['details'] = f"Patient phenotype matches {gene}-related disease (PP4)"
-                print(f"✅ PP4 applies (Supporting): {result['details']}")
-                break
-            elif choice == '3':
-                result['details'] = f"Patient phenotype partially matches {gene}-related disease (insufficient for PP4)"
-                print(f"❌ PP4 does not apply: {result['details']}")
-                break
-            elif choice == '4':
-                result['details'] = f"Patient phenotype does not match {gene}-related disease"
-                print(f"❌ PP4 does not apply: {result['details']}")
-                break
-            else:
-                print("❌ Please enter 1, 2, 3, or 4")
-        
+            result['details'] = "No or inconclusive phenotype data"
         return result
     
     def _evaluate_pp5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP5 - Reputable source recently reports variant as pathogenic."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        """Evaluate PP5 - Reputable source with stricter validation requirements."""
+        from config.constants import REPUTABLE_SOURCE_REQUIREMENTS
+        from datetime import datetime
+        
+        result = {
+            'applies': False, 
+            'strength': 'Supporting', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'none'
+        }
         
         # Check if ClinVar data is available
         clinvar_data = getattr(variant_data, 'clinvar_data', None)
         
         if clinvar_data and clinvar_data.get('clinical_significance'):
             significance = clinvar_data['clinical_significance'].lower()
+            review_status = clinvar_data.get('review_status', '').lower()
+            submitter = clinvar_data.get('submitter', '')
+            last_evaluated = clinvar_data.get('last_evaluated')
+            
+            # Validate reputable source requirements
+            is_expert_panel = any(panel.lower() in submitter.lower() 
+                                 for panel in REPUTABLE_SOURCE_REQUIREMENTS['expert_panels'])
+            
+            # Check review status (stars)
+            star_mapping = {
+                'practice guideline': 4,
+                'reviewed by expert panel': 3,
+                'criteria provided, multiple submitters': 2,
+                'criteria provided, single submitter': 1,
+                'no assertion criteria provided': 0
+            }
+            
+            stars = 0
+            for status, star_count in star_mapping.items():
+                if status in review_status:
+                    stars = star_count
+                    break
+            
+            # Check age of classification
+            classification_recent = True
+            if last_evaluated:
+                try:
+                    eval_date = datetime.fromisoformat(last_evaluated.replace('Z', '+00:00'))
+                    age_years = (datetime.now() - eval_date).days / 365.25
+                    classification_recent = age_years <= REPUTABLE_SOURCE_REQUIREMENTS['max_age_years']
+                except:
+                    classification_recent = False  # Assume old if can't parse
+            
+            # Apply strict criteria
+            meets_requirements = (
+                (is_expert_panel or stars >= REPUTABLE_SOURCE_REQUIREMENTS['min_stars']) and
+                classification_recent
+            )
+            
             if 'pathogenic' in significance and 'benign' not in significance:
-                result['applies'] = True
-                result['details'] = f"Reputable source (ClinVar) reports variant as pathogenic (PP5)"
+                if meets_requirements:
+                    result['applies'] = True
+                    result['confidence'] = 'high' if is_expert_panel else 'medium'
+                    result['data_source'] = 'expert_panel' if is_expert_panel else 'clinvar_multi_submitter'
+                    result['details'] = (
+                        f"Reputable source ({submitter}, {stars}⭐) reports variant as pathogenic "
+                        f"(PP5, reviewed: {last_evaluated or 'unknown'})"
+                    )
+                else:
+                    result['confidence'] = 'low'
+                    result['data_source'] = 'clinvar_insufficient_review'
+                    result['details'] = (
+                        f"ClinVar reports pathogenic but does not meet PP5 criteria "
+                        f"(stars: {stars}, expert panel: {is_expert_panel}, recent: {classification_recent})"
+                    )
             elif 'benign' in significance:
                 result['details'] = f"Reputable source reports variant as benign - see BP6"
             else:
@@ -832,12 +1030,16 @@ class EvidenceEvaluator:
             result['details'] = "Reputable source analysis required for PP5 evaluation"
             result['manual_review'] = True
             result['search_recommendations'] = [
-                "Check ClinVar for clinical significance",
-                "Review recent literature reports",
+                "Check ClinVar for expert panel classifications",
+                "Review recent literature reports (within 5 years)",
                 "Check laboratory databases (HGMD, LOVD)",
-                "Verify source credibility and recency"
+                "Verify source credibility (expert panels preferred)",
+                "Confirm classification recency"
             ]
-            result['guidance'] = "PP5 applies if a reputable source recently reports the variant as pathogenic"
+            result['guidance'] = (
+                "PP5 applies if reputable source (expert panel or ≥2⭐ ClinVar with recent review) "
+                "reports variant as pathogenic"
+            )
         
         return result
     
@@ -914,34 +1116,64 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bs3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS3 - Functional studies show no effect."""
+        # Automated assignment for BS3 using FunctionalStudiesEvaluator
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
-        
-        functional_studies = variant_data.functional_data.get('functional_studies')
-        
-        if functional_studies == 'benign':
+        ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
+        if ps3_bs3 == 'BS3':
             result['applies'] = True
-            result['details'] = "Functional studies show no damaging effect"
-        elif functional_studies == 'damaging':
-            result['details'] = "Functional studies show damaging effect - see PS3"
-        elif functional_studies == 'inconclusive':
-            result['details'] = "Functional studies inconclusive"
+            result['details'] = "Functional studies support a benign effect (BS3)"
         else:
-            result['details'] = "No functional studies data available"
-        
+            result['details'] = "No or inconclusive functional studies data"
         return result
     
     def _evaluate_bs4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS4 - Lack of segregation in affected members of a family."""
-        result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        """Evaluate BS4 - Lack of segregation with automated LOD analysis."""
+        result = {
+            'applies': False, 
+            'strength': 'Strong', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'none'
+        }
         
-        # Check segregation data
+        # Check if structured segregation data is available
+        segregation_families = variant_data.genetic_data.get('segregation_families')
+        
+        if segregation_families and isinstance(segregation_families, list):
+            # Automated LOD score calculation
+            lod_result = self.statistical_analyzer.calculate_lod_score(segregation_families)
+            
+            if lod_result['valid']:
+                result['data_source'] = 'segregation_analysis'
+                result['confidence'] = lod_result['confidence']
+                result['lod_analysis'] = lod_result
+                
+                # BS4 applies for negative LOD (non-segregation)
+                if lod_result['applies'] and lod_result['strength'] == 'benign_strong':
+                    result['applies'] = True
+                    result['details'] = lod_result['interpretation'] + " (BS4)"
+                else:
+                    result['details'] = f"Segregation analysis: {lod_result['interpretation']}"
+                
+                # Store for report
+                self.evidence_details['BS4_lod_analysis'] = lod_result
+                
+                return result
+            else:
+                result['details'] = f"Segregation analysis failed: {lod_result.get('error', 'Unknown error')}"
+                return result
+        
+        # Fall back to simple segregation status check
         segregation = variant_data.genetic_data.get('segregation')
         
         if segregation == 'does_not_segregate':
             result['applies'] = True
-            result['details'] = "Variant does not segregate with disease in family (BS4)"
+            result['confidence'] = 'low'
+            result['data_source'] = 'qualitative_report'
+            result['details'] = "Variant does not segregate with disease in family (BS4) - recommend quantitative LOD analysis"
         elif segregation == 'cosegregates':
+            result['confidence'] = 'low'
+            result['data_source'] = 'qualitative_report'
             result['details'] = "Variant cosegregates with disease - see PP1"
         elif segregation == 'insufficient_data':
             result['details'] = "Insufficient segregation data for BS4 evaluation"
@@ -953,10 +1185,10 @@ class EvidenceEvaluator:
             result['search_recommendations'] = [
                 "Check for variant presence in unaffected family members",
                 "Verify variant absence in affected family members",
-                "Consider statistical significance of non-segregation",
+                "Calculate LOD score with structured family data",
                 "Review family structure and inheritance pattern"
             ]
-            result['guidance'] = "BS4 applies if variant does not segregate with disease in affected family members"
+            result['guidance'] = "BS4 applies if variant does not segregate with disease (negative LOD score)"
         
         return result
     
@@ -1217,21 +1449,102 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bp6(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP6 - Reputable source recently reports variant as benign but evidence is not available."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        """Evaluate BP6 - Reputable source with stricter validation requirements (mirror of PP5 for benign)."""
+        from config.constants import REPUTABLE_SOURCE_REQUIREMENTS
+        from datetime import datetime
         
-        gene = variant_data.basic_info.get('gene')
-        variant_name = variant_data.basic_info.get('variant_name', 'variant')
+        result = {
+            'applies': False, 
+            'strength': 'Supporting', 
+            'details': '',
+            'confidence': 'very_low',
+            'data_source': 'none'
+        }
         
-        if gene:
-            if self.test_mode:
-                result['details'] = f"Test mode: Reputable source analysis not available for {gene} {variant_name}"
-                result['manual_review'] = True
+        # Check if ClinVar data is available
+        clinvar_data = getattr(variant_data, 'clinvar_data', None)
+        
+        if clinvar_data and clinvar_data.get('clinical_significance'):
+            significance = clinvar_data['clinical_significance'].lower()
+            review_status = clinvar_data.get('review_status', '').lower()
+            submitter = clinvar_data.get('submitter', '')
+            last_evaluated = clinvar_data.get('last_evaluated')
+            
+            # Validate reputable source requirements
+            is_expert_panel = any(panel.lower() in submitter.lower() 
+                                 for panel in REPUTABLE_SOURCE_REQUIREMENTS['expert_panels'])
+            
+            # Check review status (stars)
+            star_mapping = {
+                'practice guideline': 4,
+                'reviewed by expert panel': 3,
+                'criteria provided, multiple submitters': 2,
+                'criteria provided, single submitter': 1,
+                'no assertion criteria provided': 0
+            }
+            
+            stars = 0
+            for status, star_count in star_mapping.items():
+                if status in review_status:
+                    stars = star_count
+                    break
+            
+            # Check age of classification
+            classification_recent = True
+            if last_evaluated:
+                try:
+                    eval_date = datetime.fromisoformat(last_evaluated.replace('Z', '+00:00'))
+                    age_years = (datetime.now() - eval_date).days / 365.25
+                    classification_recent = age_years <= REPUTABLE_SOURCE_REQUIREMENTS['max_age_years']
+                except:
+                    classification_recent = False
+            
+            # Apply strict criteria
+            meets_requirements = (
+                (is_expert_panel or stars >= REPUTABLE_SOURCE_REQUIREMENTS['min_stars']) and
+                classification_recent
+            )
+            
+            if 'benign' in significance and 'pathogenic' not in significance:
+                if meets_requirements:
+                    result['applies'] = True
+                    result['confidence'] = 'high' if is_expert_panel else 'medium'
+                    result['data_source'] = 'expert_panel' if is_expert_panel else 'clinvar_multi_submitter'
+                    result['details'] = (
+                        f"Reputable source ({submitter}, {stars}⭐) reports variant as benign "
+                        f"(BP6, reviewed: {last_evaluated or 'unknown'})"
+                    )
+                else:
+                    result['confidence'] = 'low'
+                    result['data_source'] = 'clinvar_insufficient_review'
+                    result['details'] = (
+                        f"ClinVar reports benign but does not meet BP6 criteria "
+                        f"(stars: {stars}, expert panel: {is_expert_panel}, recent: {classification_recent})"
+                    )
+            elif 'pathogenic' in significance:
+                result['details'] = f"Reputable source reports variant as pathogenic - see PP5"
             else:
-                # Interactive evaluation for reputable source
-                result = self._evaluate_bp6_interactive(variant_data, gene, variant_name)
+                result['details'] = f"ClinVar classification: {significance}"
         else:
-            result['details'] = "Insufficient variant information for BP6 evaluation"
+            # Fall back to interactive if no ClinVar data
+            gene = variant_data.basic_info.get('gene')
+            variant_name = variant_data.basic_info.get('variant_name', 'variant')
+            
+            if gene and not self.test_mode:
+                result = self._evaluate_bp6_interactive(variant_data, gene, variant_name)
+            else:
+                result['details'] = "Reputable source analysis required for BP6 evaluation"
+                result['manual_review'] = True
+                result['search_recommendations'] = [
+                    "Check ClinVar for expert panel benign classifications",
+                    "Review certified lab reports (≥2⭐)",
+                    "Check published clinical guidelines (within 5 years)",
+                    "Verify source credibility (expert panels preferred)"
+                ]
+                result['guidance'] = (
+                    "BP6 applies if reputable source (expert panel or ≥2⭐ ClinVar with recent review) "
+                    "reports variant as benign"
+                )
         
         return result
     

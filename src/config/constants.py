@@ -13,12 +13,12 @@ Last Updated: July 10, 2025
 
 # Version and metadata information
 VERSION_INFO = {
-    'version': '3.1.0',
+    'version': '3.3.0',
     'author': 'Can Sevilmiş',
     'license': 'MIT License',
-    'last_updated': 'July 10, 2025',
+    'last_updated': 'October 3, 2025',
     'guidelines': 'ACMG/AMP 2015 & 2023',
-    'description': 'ACMG Variant Classification Assistant with Complete Criteria Implementation',
+    'description': 'ACMG Variant Classification Assistant with Enhanced Reliability Features',
     'major_features': [
         'Complete 28 ACMG/AMP criteria implementation',
         'Interactive evidence evaluation',
@@ -28,7 +28,12 @@ VERSION_INFO = {
         'Gene-specific thresholds for BA1/BS1',
         'LOF intolerant/tolerant gene classification',
         'Ensembl API integration for chromosome lookup',
-        'Improved input validation and error handling'
+        'Improved input validation and error handling',
+        '✨ NEW: Confidence & provenance tracking',
+        '✨ NEW: Automated Fisher\'s exact test (PS4)',
+        '✨ NEW: Automated LOD scoring (PP1/BS4)',
+        '✨ NEW: Strict PS2 2023 upgrade rules',
+        '✨ NEW: Stricter PP5/BP6 source validation'
     ]
 }
 
@@ -134,8 +139,26 @@ STATISTICAL_THRESHOLDS = {
     'fisher_exact_p_value': 0.05,
     'case_control_odds_ratio': 2.0,
     'segregation_lod_score': 3.0,
+    'segregation_lod_supporting': 1.5,  # Minimum LOD for PP1
+    'segregation_families_min': 3,  # Minimum families for PP1/BS4
     'splice_ai_threshold': 0.5,
     'conservation_threshold': 2.0
+}
+
+# Confidence levels for evidence criteria
+CONFIDENCE_LEVELS = {
+    'high': 'High confidence - deterministic or well-validated',
+    'medium': 'Medium confidence - data-driven with assumptions',
+    'low': 'Low confidence - user input or incomplete data',
+    'very_low': 'Very low confidence - placeholder or uncertain'
+}
+
+# Reputable source requirements for PP5/BP6
+REPUTABLE_SOURCE_REQUIREMENTS = {
+    'expert_panels': ['ClinGen', 'ENIGMA', 'InSiGHT', 'ACMG', 'ClinVar Expert Panel'],
+    'certified_labs': True,  # Require certified clinical lab
+    'min_stars': 2,  # Minimum ClinVar review stars
+    'max_age_years': 5  # Maximum age of classification in years
 }
 
 # Colorama color codes for terminal output

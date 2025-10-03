@@ -42,13 +42,31 @@ Thumbs.db
 # Project specific
 api_cache.json
 *.log
-*.txt
-!requirements.txt
-!requirements_build.txt
-!README*.txt
+test_results/
+variant_classification_report.txt
+
+# Test files - ignore all tests
+test_*.py
+*_test.py
+
+# Documentation - ignore all docs (README manually managed, not tracked)
+*.md
+src/**/*.md
 
 # Build artifacts
 ACMG_Assistant_Portable/
 build/
 dist/
 VAMPP-score-main/
+
+# Example and guide files
+example_*.csv
+*_GUIDE.md
+*_SUMMARY.md
+*_ENHANCEMENTS.md
+*_REFERENCE.md
+*_NOTES.md
+*_ROADMAP*.md
+*.png
+*.jpg
+*.jpeg
