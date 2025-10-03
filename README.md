@@ -1,7 +1,7 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**ACMG/AMP Variant Classification with Enhanced Statistical Framework**  
-**Version 3.3.0** - Enhanced Reliability Edition
+**ACMG/AMP Variant Classification with Statistical Framework**  
+**Version 3.3.0**
 
 ## **Quick Start**
 
@@ -19,14 +19,11 @@ Screenshot of the CLI welcome page
 
 ## ⚙️ Key Features
 
-- **Complete ACMG/AMP Guidelines**: All 28 criteria (2015 & 2023) with precise PS2/PM6 de novo logic
-- **Enhanced Reliability (v3.3.0)**: Confidence tracking & data source provenance for all criteria
-- **Statistical Automation**: Fisher's Exact Test (PS4), LOD scoring (PP1/BS4), automated evidence validation
-- **Stricter Evidence Requirements**: PS2 2023 upgrade (both parents), PP5/BP6 expert panel validation
-- **Interactive Evidence Evaluation**: User-guided literature review for PS1/PM5/PP4/PS4/PM3/BP2/BP5/BP6 criteria  
-- **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
-- **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
-- **Advanced Statistics**: Fisher's Exact Test, prevalence-based thresholds, conservation analysis
+- **Complete ACMG/AMP Implementation**: All 28 criteria (2015 & 2023 guidelines)
+- **Statistical Framework**: Fisher's Exact Test, LOD scoring, confidence tracking
+- **30+ In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM...
+- **Gene-Specific Thresholds**: Custom population frequencies for high-variability genes
+- **Interactive & Automated**: Mix of data-driven automation and literature-guided evaluation
 
 ## 💻 Installation & Usage
 
