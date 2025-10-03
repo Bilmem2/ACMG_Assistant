@@ -197,13 +197,12 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 
 ## ⚠️ Disclaimer & Important Notes
 
-**⚠️ MEDICAL DISCLAIMER**: This tool is intended for research and educational purposes only. It is **NOT** a substitute for professional medical advice, diagnosis, or treatment. Variant classifications provided by this tool should not be used for clinical decision-making without proper validation by qualified medical professionals and certified genetic counselors. Always consult with healthcare providers for clinical interpretation of genetic variants.
+**⚠️ RESEARCH USE ONLY**: This tool is intended for research and educational purposes. Variant classifications should NOT be used for clinical decision-making without validation by qualified medical professionals and certified genetic counselors.
 
-**Important Technical Notes**:
-- **Manual Score Entry**: No automatic retrieval from databases - all predictor scores must be manually entered
-- **Research Use Only**: Not validated for direct clinical use without additional confirmation
-- **Internet Required**: For API calls (ClinVar, Ensembl) and database queries
-- **Test Mode**: Available only in Python installation, not in standalone executable
+**Technical Notes**:
+- Manual predictor score entry required (no automatic database retrieval)
+- Internet required for API calls (ClinVar, Ensembl)
+- Not validated for direct clinical use
 
 ##   Citation & References
 
