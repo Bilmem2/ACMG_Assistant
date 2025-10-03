@@ -62,6 +62,14 @@ build.bat
 build_executable_new.py
 requirements_build.txt
 
+# Root level folders (only src/ should be tracked)
+/config/
+/core/
+/data/
+/utils/
+/.vscode/
+/test_results/
+
 # Example and guide files
 example_*.csv
 *_GUIDE.md

@@ -1,10 +1,11 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**ACMG/AMP Variant Classification with Enhanced Statistical Framework**
+**ACMG/AMP Variant Classification with Enhanced Statistical Framework**  
+**Version 3.3.0** - Enhanced Reliability Edition
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version from Google Drive]()**  
+> **📥 [Download Latest Version (v3.3.0) from Google Drive](https://drive.google.com/file/d/1xP7xyb522qo4FYnxz2FfpKqkAdFyYTwj/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -13,9 +14,15 @@
 
 ---
 
+<img width="1098" height="618" alt="image" src="https://github.com/user-attachments/assets/9ef0cc7a-7c25-45e9-b24a-ec859f680a50" />
+Screenshot of the CLI welcome page
+
 ## ⚙️ Key Features
 
 - **Complete ACMG/AMP Guidelines**: All 28 criteria (2015 & 2023) with precise PS2/PM6 de novo logic
+- **Enhanced Reliability (v3.3.0)**: Confidence tracking & data source provenance for all criteria
+- **Statistical Automation**: Fisher's Exact Test (PS4), LOD scoring (PP1/BS4), automated evidence validation
+- **Stricter Evidence Requirements**: PS2 2023 upgrade (both parents), PP5/BP6 expert panel validation
 - **Interactive Evidence Evaluation**: User-guided literature review for PS1/PM5/PP4/PS4/PM3/BP2/BP5/BP6 criteria  
 - **Enhanced Metascore**: Computational metascore with dynamic gene-specific weighting
 - **Comprehensive In Silico Predictors**: REVEL, CADD, AlphaMissense, VEST4, ESM1b, SpliceAI, MetaSVM, FITCONS...
@@ -25,14 +32,14 @@
 
 ### Standalone Executable (Recommended)
 ```bash
-# Download and extract ACMG_Assistant_v3.0.0.zip
-# Run: ACMG_Assistant_v3.0.0.exe
+# Download and extract ACMG_Assistant.zip
+# Run: ACMG_Assistant.exe
 ```
 
 ### Python Installation
 ```bash
-git clone https://github.com/Bilmem2/acmg-assessor.git
-cd acmg-assessor/src
+git clone https://github.com/Bilmem2/ACMG_Assistant
+cd src
 pip install -r ../requirements.txt
 python acmg_assistant.py
 ```
@@ -40,11 +47,11 @@ python acmg_assistant.py
 ### Command Options
 ```bash
 # Normal mode
-ACMG_Assistant_v3.0.0.exe             # Executable
+ACMG_Assistant.exe             # Executable
 python acmg_assistant.py               # Python (from src/ directory)
 
 # ACMG 2023 guidelines
-ACMG_Assistant_v3.0.0.exe --acmg-2023
+ACMG_Assistant.exe --acmg-2023
 python acmg_assistant.py --acmg-2023
 
 # Test mode (Python only)
@@ -61,13 +68,10 @@ python build_executable_new.py
 ## 📊 Latest Release & Version History
 
 For version history, release notes, and previous versions, visit:
-**[GitHub Releases](https://github.com/Bilmem2/acmg-assessor/releases)**
+**[GitHub Releases](https://github.com/Bilmem2/ACMG_Assistant/releases)**
 
 Each release includes:
-- Detailed changelog and new features
-- Standalone executable downloads
 - Source code archives
-- Installation instructions
 
 ## 📊 In Silico Predictors
 
@@ -131,17 +135,24 @@ src/
 ├── acmg_assistant.py          # Main application entry point  
 ├── config/
 │   ├── __init__.py
-│   └── constants.py           # ACMG criteria thresholds, predictor configs
+│   └── constants.py           # ACMG criteria thresholds, predictor configs (v3.3.0)
 ├── core/
 │   ├── __init__.py
-│   ├── acmg_classifier.py     # Main classification engine
-│   ├── evidence_evaluator.py  # Evidence scoring logic
-│   └── variant_data.py        # Variant data structures
+│   ├── acmg_classifier.py            # Main classification engine
+│   ├── evidence_evaluator.py         # Evidence scoring with confidence tracking (v3.3.0)
+│   ├── variant_data.py               # Variant data structures
+│   ├── functional_studies_evaluator.py  # PS3/BS3 functional studies (v3.3.0)
+│   ├── gene_rules_engine.py          # Gene-specific rule engine (v3.3.0)
+│   ├── gene_specific_rules.py        # BRCA1/2, TTN, MUC16 rules (v3.3.0)
+│   ├── missense_evaluator.py         # PS1/PM5/PP2/BP1 missense analysis (v3.3.0)
+│   ├── phenotype_matcher.py          # PP4/BP5 phenotype matching (v3.3.0)
+│   └── population_analyzer.py        # BA1/BS1/PM2/BS2 population analysis (v3.3.0)
 └── utils/
     ├── __init__.py
     ├── api_client.py          # ClinVar/Ensembl API integrations
     ├── input_handler.py       # User input processing
     ├── report_generator.py    # Classification report output
+    ├── statistical_utils.py   # Fisher's exact, LOD scoring (v3.3.0)
     └── validators.py          # Input validation functions
 ```
 
@@ -175,6 +186,9 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 **Automated Criteria**: All others use data-driven logic with manual review options
 
 ### Special Algorithm Features
+- **Confidence Tracking (v3.3.0)**: Every criterion reports confidence level (high/medium/low/very_low) and data source
+- **Statistical Automation (v3.3.0)**: Automated Fisher's Exact Test (PS4) and LOD scoring (PP1/BS4)
+- **Enhanced Validation (v3.3.0)**: Stricter PS2 2023 upgrade (both parents required), PP5/BP6 expert panel requirements
 - **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
 - **Gene-Specific PM2**: Custom population frequency thresholds per gene
 - **Statistical PS4**: Fisher's Exact Test for case-control prevalence analysis
