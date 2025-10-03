@@ -58,6 +58,9 @@ ACMG_Assistant_Portable/
 build/
 dist/
 VAMPP-score-main/
+build.bat
+build_executable_new.py
+requirements_build.txt
 
 # Example and guide files
 example_*.csv
