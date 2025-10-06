@@ -1,11 +1,10 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**ACMG/AMP Variant Classification with Statistical Framework**  
-**Version 3.3.0**
+**Version 3.4.0**
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version (v3.3.0) from Google Drive](https://drive.google.com/file/d/16azUiNQtNrkwnyK_DpQ7yGkJmAL1GbRn/view?usp=sharing)**  
+> **📥 [Download Latest Version (v3.4.0) from Google Drive](https://drive.google.com/file/d/10pU9QmJkHky23B39JefU8RUsdNSmOAJX/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -14,7 +13,7 @@
 
 ---
 
-<img width="1098" height="618" alt="image" src="https://github.com/user-attachments/assets/9ef0cc7a-7c25-45e9-b24a-ec859f680a50" />
+![v3 3 0 screenshot](https://github.com/user-attachments/assets/dad9b471-65cd-4ac9-b5da-e5da3ddb9c21)
 Screenshot of the CLI welcome page
 
 ## ⚙️ Key Features
@@ -110,12 +109,6 @@ This algorithm integrates **30+ computational prediction tools** across multiple
 - **FITCONS** - Functional information content (multiple cell types)
 - **Combined Metascore** - Custom VAMPP-like weighted combination
 
-### 📈 **VAMPP-Score Integration**
-- **Multi-Predictor Weighting** - Sophisticated combination of 50+ predictors
-- **Variant-Type Specific** - Tailored scoring for missense, splice, and conservation
-- **Statistical Framework** - Evidence integration with pathogenic/benign thresholds
-- **Conservation Analysis** - Multi-species phylogenetic conservation scoring
-
 ### 📚 **Data Sources & Integration**
 - **Varsome** - Comprehensive variant annotation platform
 - **ClinVar** - NCBI clinical significance database
@@ -186,7 +179,6 @@ The algorithm implements a **multi-layered evidence evaluation system** that pro
 - **Confidence Tracking (v3.3.0)**: Every criterion reports confidence level (high/medium/low/very_low) and data source
 - **Statistical Automation (v3.3.0)**: Automated Fisher's Exact Test (PS4) and LOD scoring (PP1/BS4)
 - **Enhanced Validation (v3.3.0)**: Stricter PS2 2023 upgrade (both parents required), PP5/BP6 expert panel requirements
-- **VAMPP-Score Integration**: Metascore combining 50+ predictors for PP3/BP4
 - **Gene-Specific PM2**: Custom population frequency thresholds per gene
 - **Statistical PS4**: Fisher's Exact Test for case-control prevalence analysis
 - **Conservation Analysis**: Multi-species phylogenetic conservation scoring
