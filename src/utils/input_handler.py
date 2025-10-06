@@ -15,6 +15,7 @@ from config.constants import (
     WARNING_MESSAGES, INFO_MESSAGES, get_colored_message, TEST_MODE_DATA,
     VALIDATION_PATTERNS, ALIASES, ALL_VARIANT_CONSEQUENCES
 )
+from utils.hgvs_parser import HGVSParser, parse_hgvs_variant
 
 # Initialize colorama
 init()
@@ -145,34 +146,95 @@ class InputHandler:
         )
         basic_info['position'] = position_input if position_input else None
         
-        # Reference allele - Optional for basic classification
-        self.print_info("Reference/alternate alleles enable ClinVar lookup and population analysis")
-        self.print_info("Can be skipped if focus is on functional/segregation evidence")
-        ref_input = self._prompt_input(
-            "Reference allele (e.g., C) or press Enter to skip: ",
-            validator=self._validate_allele,
+        # cDNA change with HGVS parsing - ASK THIS FIRST!
+        self.print_info("HGVS format enables automatic extraction of transcript, position, and alleles")
+        self.print_info("Supports multiple formats:")
+        self.print_info("  • Full HGVS: NM_000546.6:c.1528C>T (recommended)")
+        self.print_info("  • cDNA only: c.1528C>T")
+        self.print_info("  • Position only: 1528C>T")
+        cdna_input = self._prompt_input(
+            "cDNA change (HGVS format, e.g., NM_000546.6:c.1528C>T): ",
+            validator=self._validate_hgvs_cdna,
             required=False
         )
-        basic_info['ref_allele'] = ref_input.upper() if ref_input else None
         
-        # Alternate allele - Optional for basic classification
-        alt_input = self._prompt_input(
-            "Alternate allele (e.g., T) or press Enter to skip: ",
-            validator=self._validate_allele,
-            required=False
-        )
-        basic_info['alt_allele'] = alt_input.upper() if alt_input else None
+        # Parse HGVS input if provided
+        if cdna_input:
+            parsed_hgvs = parse_hgvs_variant(cdna_input)
+            if parsed_hgvs:
+                basic_info['cdna_change'] = cdna_input
+                
+                # Extract and store parsed components
+                if 'refseq_id' in parsed_hgvs:
+                    basic_info['transcript'] = parsed_hgvs['refseq_id']
+                    self.print_success(f"Extracted transcript: {parsed_hgvs['refseq_id']}")
+                
+                if 'position' in parsed_hgvs:
+                    basic_info['cdna_position'] = parsed_hgvs['position']
+                    self.print_success(f"Extracted cDNA position: {parsed_hgvs['position']}")
+                    
+                # Extract ref/alt bases from HGVS if it's a substitution
+                if parsed_hgvs.get('variant_type') == 'substitution':
+                    if 'ref_base' in parsed_hgvs:
+                        basic_info['ref_allele'] = parsed_hgvs['ref_base']
+                        self.print_success(f"Extracted reference allele: {parsed_hgvs['ref_base']}")
+                    
+                    if 'alt_base' in parsed_hgvs:
+                        basic_info['alt_allele'] = parsed_hgvs['alt_base']
+                        self.print_success(f"Extracted alternate allele: {parsed_hgvs['alt_base']}")
+                
+                self.print_success("HGVS variant parsed successfully!")
+            else:
+                basic_info['cdna_change'] = cdna_input
+                self.print_warning("Could not parse HGVS format - stored as-is")
+        else:
+            basic_info['cdna_change'] = None
+        
+        # Reference allele - Only ask if not already extracted from HGVS
+        if not basic_info.get('ref_allele'):
+            self.print_info("Reference/alternate alleles enable ClinVar lookup and population analysis")
+            self.print_info("Can be skipped if focus is on functional/segregation evidence")
+            ref_input = self._prompt_input(
+                "Reference allele (e.g., C) or press Enter to skip: ",
+                validator=self._validate_allele,
+                required=False
+            )
+            basic_info['ref_allele'] = ref_input.upper() if ref_input else None
+        else:
+            # Allele was extracted from HGVS, offer to confirm or override
+            self.print_info(f"Reference allele from HGVS: {basic_info['ref_allele']}")
+            override_ref = self._prompt_input(
+                f"Press Enter to accept '{basic_info['ref_allele']}' or type different value: ",
+                validator=self._validate_allele,
+                required=False
+            )
+            if override_ref and override_ref.strip():
+                basic_info['ref_allele'] = override_ref.upper()
+                self.print_success(f"Using manual reference allele: {override_ref.upper()}")
+        
+        # Alternate allele - Only ask if not already extracted from HGVS
+        if not basic_info.get('alt_allele'):
+            alt_input = self._prompt_input(
+                "Alternate allele (e.g., T) or press Enter to skip: ",
+                validator=self._validate_allele,
+                required=False
+            )
+            basic_info['alt_allele'] = alt_input.upper() if alt_input else None
+        else:
+            # Allele was extracted from HGVS, offer to confirm or override
+            self.print_info(f"Alternate allele from HGVS: {basic_info['alt_allele']}")
+            override_alt = self._prompt_input(
+                f"Press Enter to accept '{basic_info['alt_allele']}' or type different value: ",
+                validator=self._validate_allele,
+                required=False
+            )
+            if override_alt and override_alt.strip():
+                basic_info['alt_allele'] = override_alt.upper()
+                self.print_success(f"Using manual alternate allele: {override_alt.upper()}")
         
         # Inform user about skipped features
         if not basic_info['ref_allele'] or not basic_info['alt_allele']:
             self.print_info("Allele information skipped - ClinVar lookup and some population features may be limited")
-        
-        # cDNA change
-        basic_info['cdna_change'] = self._prompt_input(
-            "cDNA change (HGVS format, e.g., c.5266dupC): ",
-            validator=self._validate_hgvs_cdna,
-            required=False
-        )
         
         # Protein change
         basic_info['protein_change'] = self._prompt_input(
@@ -1295,10 +1357,13 @@ class InputHandler:
         return bool(re.match(r'^[ATCG]+$', value.upper()))
     
     def _validate_hgvs_cdna(self, value: str) -> bool:
-        """Validate HGVS cDNA format."""
+        """Validate HGVS cDNA format using comprehensive parser."""
         if not value:
             return True  # Optional field
-        return bool(re.match(VALIDATION_PATTERNS['hgvs_cdna'], value))
+        
+        # Use the HGVS parser for validation
+        from utils.hgvs_parser import validate_hgvs_variant
+        return validate_hgvs_variant(value)
     
     def _validate_hgvs_protein(self, value: str) -> bool:
         """Validate HGVS protein format."""

@@ -41,17 +41,40 @@ Thumbs.db
 
 # Project specific
 api_cache.json
+domain_api_cache.json
+diagnostic_report.json
+diagnostic_summary.txt
 *.log
 test_results/
 variant_classification_report.txt
+test_input.txt
+show_hotspot_api.py
 
-# Test files - ignore all tests
-test_*.py
-*_test.py
+# Documentation - local only (not tracked in repo)
+README.md
+CHANGELOG.md
+RELEASE_NOTES_*.md
 
-# Documentation - ignore all docs (README manually managed, not tracked)
-*.md
-src/**/*.md
+# Test files - specific patterns
+test_interactive.py
+test_phase*.py
+test_missense_integration.py
+
+# Core test suites (these ARE tracked)
+!test_acmg_*.py
+!test_all_*.py
+!test_api_*.py
+!test_classification.py
+!test_critical_*.py
+!test_denovo_*.py
+!test_evidence_*.py
+!test_functional_*.py
+!test_gene_*.py
+!test_inframe_*.py
+!test_phenotype_*.py
+!test_phylop_*.py
+!test_population_*.py
+!test_report_*.py
 
 # Build artifacts
 ACMG_Assistant_Portable/

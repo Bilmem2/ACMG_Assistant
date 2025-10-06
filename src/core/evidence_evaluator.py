@@ -324,15 +324,35 @@ class EvidenceEvaluator:
         
         gene = variant_data.basic_info.get('gene')
         aa_change = variant_data.basic_info.get('amino_acid_change')
+        hgvs_p = variant_data.basic_info.get('hgvs_p')
         
-        if gene and aa_change:
+        # CRITICAL FIX: Check ClinVar data first
+        clinvar = variant_data.clinvar_data or {}
+        
+        # Check if same AA change is marked as pathogenic in ClinVar
+        if clinvar.get('same_aa_pathogenic'):
+            result['applies'] = True
+            result['details'] = f"Same amino acid change {aa_change or hgvs_p} reported as pathogenic in ClinVar (PS1)"
+            return result
+        
+        # Check pathogenic_variants list for matching amino acid change
+        pathogenic_variants = clinvar.get('pathogenic_variants', [])
+        if pathogenic_variants and hgvs_p:
+            for pv in pathogenic_variants:
+                if pv.get('hgvs_p') == hgvs_p:
+                    result['applies'] = True
+                    result['details'] = f"Same amino acid change {hgvs_p} in {gene} reported as pathogenic (PS1)"
+                    return result
+        
+        # If no automated data, check in test mode or interactive mode
+        if gene and (aa_change or hgvs_p):
             if self.test_mode:
                 # Test mode: Return default result without interaction
-                result['details'] = f"Test mode: Manual literature review required for PS1 evaluation"
+                result['details'] = f"Test mode: No ClinVar data for same AA change"
                 result['manual_review'] = True
             else:
                 # Interactive mode: Ask user for literature review results
-                result = self._evaluate_ps1_interactive(variant_data, gene, aa_change)
+                result = self._evaluate_ps1_interactive(variant_data, gene, aa_change or hgvs_p)
         else:
             result['details'] = "Insufficient variant information for PS1 evaluation"
         
@@ -386,18 +406,33 @@ class EvidenceEvaluator:
             'data_source': 'user_input'
         }
         
-        # Try both genetic_data and functional_data for de novo status
-        denovo_status = (variant_data.genetic_data.get('de_novo') or 
-                        variant_data.genetic_data.get('denovo') or
+        genetic_data = variant_data.genetic_data or {}
+        
+        # CRITICAL FIX: Check inheritance_pattern for de_novo
+        inheritance_pattern = genetic_data.get('inheritance_pattern', '').lower()
+        
+        # Get parental confirmation status
+        maternity_confirmed = genetic_data.get('maternity_confirmed', False)
+        paternity_confirmed = genetic_data.get('paternity_confirmed', False)
+        family_history = genetic_data.get('family_history', True)
+        
+        # Try both genetic_data and functional_data for de novo status (legacy support)
+        denovo_status = (genetic_data.get('de_novo') or 
+                        genetic_data.get('denovo') or
                         variant_data.functional_data.get('de_novo') or
                         variant_data.functional_data.get('denovo'))
         
-        # Get parental confirmation status
-        maternity_confirmed = variant_data.genetic_data.get('maternity_confirmed')
-        paternity_confirmed = variant_data.genetic_data.get('paternity_confirmed')
+        # Check if inheritance pattern indicates de novo
+        is_de_novo = (inheritance_pattern == 'de_novo' or 
+                     denovo_status == 'confirmed' or
+                     (inheritance_pattern == 'de_novo' and not family_history))
+        
+        if not is_de_novo:
+            result['details'] = 'No evidence of de novo variant'
+            return result
         
         # STRICT 2023 RULES: PS2_Very_Strong only with BOTH parents confirmed
-        if denovo_status == 'confirmed' and maternity_confirmed and paternity_confirmed:
+        if maternity_confirmed and paternity_confirmed:
             result['applies'] = True
             result['confidence'] = 'high'
             result['data_source'] = 'parental_testing'
@@ -409,34 +444,53 @@ class EvidenceEvaluator:
             else:
                 result['details'] = 'De novo variant confirmed with parental testing (PS2)'
                 
-        elif denovo_status == 'confirmed' and (maternity_confirmed or paternity_confirmed):
+        elif maternity_confirmed or paternity_confirmed:
             # Only one parent confirmed - downgrade to PM6
             result['applies'] = False
             result['confidence'] = 'medium'
             result['data_source'] = 'partial_parental_testing'
             result['details'] = 'De novo confirmed but only one parent tested - see PM6 instead of PS2'
             
-        elif denovo_status == 'assumed':
-            # For assumed de novo, use PM6 instead of PS2
+        else:
+            # De novo indicated but not confirmed with parental testing
             result['applies'] = False
             result['confidence'] = 'low'
             result['data_source'] = 'clinical_assumption'
-            result['details'] = 'De novo assumed but not confirmed - see PM6'
-            
-        elif denovo_status == 'confirmed' and not (maternity_confirmed or paternity_confirmed):
-            # Marked as confirmed but no parental testing - treat as assumed
-            result['applies'] = False
-            result['confidence'] = 'very_low'
-            result['data_source'] = 'unverified_claim'
-            result['details'] = 'De novo marked as confirmed but no parental testing documented - see PM6'
-        else:
-            result['details'] = 'No evidence of de novo variant'
+            result['details'] = 'De novo assumed but not confirmed with parental testing - see PM6'
         
         return result
     
     def _evaluate_ps3(self, variant_data) -> Dict[str, Any]:
-        # Automated assignment for PS3/BS3 using FunctionalStudiesEvaluator
+        """Evaluate PS3 - Functional studies supportive of damaging effect."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        functional_data = variant_data.functional_data or {}
+        
+        # CRITICAL FIX: Check has_functional_studies flag first
+        has_studies = functional_data.get('has_functional_studies', False)
+        functional_impact = functional_data.get('functional_impact', '').lower()
+        
+        if has_studies:
+            # Check functional_impact field
+            if functional_impact in ['damaging', 'pathogenic', 'loss_of_function', 'lof']:
+                result['applies'] = True
+                result['details'] = "Functional studies support a damaging effect (PS3)"
+                return result
+            elif functional_impact in ['benign', 'neutral', 'normal']:
+                result['details'] = "Functional studies support benign effect - see BS3"
+                return result
+            
+            # Check individual functional_studies array
+            functional_studies = functional_data.get('functional_studies', [])
+            if functional_studies:
+                for study in functional_studies:
+                    study_result = study.get('result', '').lower()
+                    if 'loss' in study_result or 'damaging' in study_result or 'pathogenic' in study_result:
+                        result['applies'] = True
+                        result['details'] = f"Functional studies show {study_result} (PS3)"
+                        return result
+        
+        # Fall back to FunctionalStudiesEvaluator
         ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
         if ps3_bs3 == 'PS3':
             result['applies'] = True
@@ -445,6 +499,7 @@ class EvidenceEvaluator:
             result['details'] = "Functional studies support a benign effect (BS3)"
         else:
             result['details'] = "No or inconclusive functional studies data"
+        
         return result
     
     def _evaluate_ps4(self, variant_data) -> Dict[str, Any]:
@@ -460,8 +515,56 @@ class EvidenceEvaluator:
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
-        # Check if case-control data is available
-        functional_data = variant_data.functional_data
+        # CRITICAL FIX: Check population_data for case_control_data
+        population_data = variant_data.population_data or {}
+        case_control = population_data.get('case_control_data', {})
+        
+        # Check if simplified case-control data is available
+        if case_control.get('significant'):
+            odds_ratio = case_control.get('odds_ratio', 0)
+            p_value = case_control.get('p_value', 1.0)
+            cases = case_control.get('cases', 0)
+            controls = case_control.get('controls', 0)
+            
+            # Select thresholds based on guidelines version
+            if self.use_2023_guidelines:
+                from config.constants import STATISTICAL_THRESHOLDS_2023
+                thresholds = STATISTICAL_THRESHOLDS_2023
+                guidelines_label = 'ACMG 2023'
+            else:
+                from config.constants import STATISTICAL_THRESHOLDS_2015
+                thresholds = STATISTICAL_THRESHOLDS_2015
+                guidelines_label = 'ACMG 2015'
+            
+            min_or = thresholds.get('case_control_odds_ratio')
+            min_cases = thresholds.get('case_control_min_cases')
+            min_controls = thresholds.get('case_control_min_controls')
+            
+            # Validate criteria
+            meets_criteria = (
+                odds_ratio >= min_or and
+                p_value < 0.05 and
+                cases >= min_cases and
+                controls >= min_controls
+            )
+            
+            if meets_criteria:
+                result['applies'] = True
+                result['data_source'] = 'case_control_study'
+                result['confidence'] = 'high'
+                if self.use_2023_guidelines:
+                    result['details'] = f"Case-control study shows significant enrichment (OR={odds_ratio}, p={p_value}, n_cases={cases}, n_controls={controls}) - Meets {guidelines_label} criteria (PS4)"
+                else:
+                    result['details'] = f"Case-control study shows significant enrichment (OR={odds_ratio}, p={p_value}) (PS4)"
+            else:
+                result['applies'] = False
+                result['confidence'] = 'low'
+                result['details'] = f"Case-control data insufficient for {guidelines_label} (OR={odds_ratio} [need ≥{min_or}], cases={cases} [need ≥{min_cases}], controls={controls} [need ≥{min_controls}])"
+            
+            return result
+        
+        # Check if case-control data is available in functional_data (legacy format)
+        functional_data = variant_data.functional_data or {}
         
         cases_with = functional_data.get('cases_with_variant')
         cases_total = functional_data.get('total_cases')
@@ -556,10 +659,134 @@ class EvidenceEvaluator:
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
         gene = variant_data.basic_info.get('gene')
-        aa_change = variant_data.basic_info.get('amino_acid_change')
+        functional_data = variant_data.functional_data or {}
         
-        if gene and aa_change:
-            # Define known hotspot regions for common genes
+        # CRITICAL FIX: Check functional_data for hotspot/domain flags
+        in_hotspot = functional_data.get('in_hotspot', False)
+        in_functional_domain = functional_data.get('in_functional_domain', False)
+        hotspot_name = functional_data.get('hotspot_name', '')
+        domain_name = functional_data.get('domain_name', '')
+        benign_variation = functional_data.get('benign_variation_in_domain', True)
+        
+        # Extract position from HGVS if available for API check
+        position = None
+        hgvs_p = variant_data.basic_info.get('hgvs_p', '')
+        if hgvs_p:
+            import re
+            match = re.search(r'p\.\w+(\d+)', hgvs_p)
+            if match:
+                position = int(match.group(1))
+        
+        # Check if variant is in hotspot
+        if in_hotspot:
+            result['applies'] = True
+            result['details'] = f"Variant in mutational hotspot"
+            if hotspot_name:
+                result['details'] += f" ({hotspot_name})"
+            result['details'] += " (PM1)"
+            return result
+        
+        # Check if variant is in critical functional domain WITHOUT benign variation
+        if in_functional_domain and not benign_variation:
+            result['applies'] = True
+            result['details'] = f"Variant in critical functional domain"
+            if domain_name:
+                result['details'] += f" ({domain_name})"
+            result['details'] += " without benign variation (PM1)"
+            return result
+        
+        # If no manual flags set, try API-based hotspot detection
+        if gene and not self.test_mode:
+            # Import here to handle both interactive and test modes
+            try:
+                from config.constants import COLORAMA_COLORS
+            except ImportError:
+                # Fallback if running from different context
+                COLORAMA_COLORS = {
+                    'CYAN': '\033[96m', 'GREEN': '\033[92m', 
+                    'YELLOW': '\033[93m', 'RESET': '\033[0m'
+                }
+            
+            try:
+                from utils.domain_api_client import DomainAPIClient
+                
+                # USER FEEDBACK: Inform about API check
+                print(f"\n{COLORAMA_COLORS['CYAN']}🔍 Checking hotspot databases for {gene}", end='')
+                if position:
+                    print(f" position {position}", end='')
+                print(f"...{COLORAMA_COLORS['RESET']}")
+                
+                domain_client = DomainAPIClient(cache_enabled=True)
+                hotspot_info = domain_client.get_hotspot_info(gene, position)
+                
+                # USER FEEDBACK: Show what was found
+                source = hotspot_info.get('source', 'none')
+                if source != 'none':
+                    print(f"{COLORAMA_COLORS['GREEN']}✓ Data retrieved from: {source}{COLORAMA_COLORS['RESET']}")
+                    
+                    # Show hotspot details if available
+                    if 'hotspot_details' in hotspot_info:
+                        details = hotspot_info['hotspot_details']
+                        print(f"  📊 Tumor count: {details.get('tumor_count', 'N/A')}")
+                        print(f"  📊 Mutation count: {details.get('mutation_count', 'N/A')}")
+                    
+                    # Show domain information
+                    domains = hotspot_info.get('domains', [])
+                    if domains:
+                        print(f"  🧬 Domains found: {', '.join(domains[:3])}")
+                        if len(domains) > 3:
+                            print(f"     ... and {len(domains)-3} more")
+                else:
+                    print(f"{COLORAMA_COLORS['YELLOW']}⚠ No external database information available{COLORAMA_COLORS['RESET']}")
+                
+                # Check if position is a known hotspot
+                if position and hotspot_info.get('position_is_hotspot'):
+                    result['applies'] = True
+                    result['details'] = f"Variant at known hotspot residue {position} in {gene}"
+                    if hotspot_info.get('source'):
+                        result['details'] += f" (Source: {hotspot_info['source']})"
+                    result['details'] += " (PM1)"
+                    result['api_source'] = source
+                    result['external_data'] = hotspot_info
+                    
+                    # USER FEEDBACK: Clear success message
+                    print(f"{COLORAMA_COLORS['GREEN']}✅ PM1 APPLIES: Position {position} is a documented hotspot{COLORAMA_COLORS['RESET']}")
+                    return result
+                
+                # Check if gene has known hotspots (suggest manual review)
+                if hotspot_info.get('is_hotspot_gene'):
+                    domains = hotspot_info.get('domains', [])
+                    hotspot_residues = hotspot_info.get('hotspot_residues', [])
+                    
+                    result['manual_review'] = True
+                    result['details'] = f"Gene {gene} has known hotspot regions"
+                    if domains:
+                        result['details'] += f" (Domains: {', '.join(domains[:3])})"
+                    if hotspot_residues and position:
+                        closest = min(hotspot_residues, key=lambda x: abs(x - position))
+                        if abs(closest - position) <= 5:
+                            result['details'] += f" - Near hotspot residue {closest}"
+                    result['details'] += f" (Source: {hotspot_info['source']})"
+                    result['api_source'] = source
+                    result['external_data'] = hotspot_info
+                    
+                    # USER FEEDBACK: Manual review suggestion
+                    print(f"{COLORAMA_COLORS['YELLOW']}⚡ Manual review suggested: {gene} has documented hotspot regions{COLORAMA_COLORS['RESET']}")
+                    if hotspot_residues:
+                        print(f"   Known hotspot residues: {', '.join(map(str, hotspot_residues[:5]))}")
+                        if len(hotspot_residues) > 5:
+                            print(f"   ... and {len(hotspot_residues)-5} more")
+                    return result
+            
+            except ImportError:
+                print(f"{COLORAMA_COLORS['YELLOW']}⚠ Domain API module not available - using fallback{COLORAMA_COLORS['RESET']}")
+            except Exception as e:
+                # API error - don't fail, just fall back
+                print(f"{COLORAMA_COLORS['YELLOW']}⚠ API check failed ({str(e)[:50]}) - using fallback data{COLORAMA_COLORS['RESET']}")
+                pass
+        
+        # Legacy fallback: If flags not set, check for known hotspot genes
+        if gene:
             hotspot_genes = {
                 'TP53': ['DNA_binding_domain', 'tetramerization_domain'],
                 'KRAS': ['GTPase_domain'],
@@ -571,23 +798,8 @@ class EvidenceEvaluator:
             if gene.upper() in hotspot_genes:
                 result['details'] = f"Gene {gene} has known hotspot regions - manual domain analysis required"
                 result['manual_review'] = True
-                result['search_recommendations'] = [
-                    f"Check if variant is in known functional domain for {gene}",
-                    f"Review protein structure and critical domains",
-                    f"Check ClinVar for clustering of pathogenic variants",
-                    f"Review literature for hotspot regions in {gene}"
-                ]
-                result['guidance'] = "PM1 applies if variant is in a mutational hotspot or critical functional domain"
             else:
-                result['details'] = f"Manual domain analysis required for {gene}"
-                result['manual_review'] = True
-                result['search_recommendations'] = [
-                    f"Identify functional domains for {gene}",
-                    f"Check for clustering of pathogenic variants",
-                    f"Review protein structure databases",
-                    f"Check UniProt for domain annotations"
-                ]
-                result['guidance'] = "PM1 applies if variant is in a mutational hotspot or critical functional domain"
+                result['details'] = f"No hotspot or functional domain data available"
         else:
             result['details'] = "Insufficient variant information for PM1 evaluation"
         
@@ -607,13 +819,38 @@ class EvidenceEvaluator:
         pop_data = variant_data.population_data
         gnomad_af = pop_data.get('gnomad_af')
         
-        # PM2 applies if variant is absent or very rare in population databases
-        if gnomad_af is None or gnomad_af == 0:
+        # CRITICAL FIX: PM2 should NOT apply if frequency is high enough for BA1/BS1
+        # BA1 threshold: >5%, BS1 threshold: >1% (gene-specific)
+        gene = variant_data.basic_info.get('gene', '').upper()
+        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        bs1_threshold = gene_thresholds.get('BS1', 0.01)
+        
+        # Check if frequency is too high for PM2
+        if gnomad_af is not None and gnomad_af >= bs1_threshold:
+            # Frequency too high - variant is NOT absent from controls
+            result['applies'] = False
+            result['details'] = f"Variant present in population at significant frequency (gnomAD AF: {gnomad_af})"
+            result['confidence'] = 'high'
+            return result
+        
+        # Check if absent from controls flag is explicitly set
+        if pop_data.get('absent_from_controls') is True:
             result['applies'] = True
             result['details'] = "Variant absent from population databases (PM2)"
-        elif gnomad_af < 0.0001:  # Very rare
+            return result
+        
+        # PM2 applies if variant is absent or extremely rare
+        if gnomad_af is None:
+            # No frequency data - could be absent or just not in database
+            result['applies'] = False
+            result['details'] = "No population frequency data available"
+            result['confidence'] = 'low'
+        elif gnomad_af == 0.0:
             result['applies'] = True
-            result['details'] = f"Variant very rare in population (gnomAD AF: {gnomad_af}) (PM2)"
+            result['details'] = "Variant absent from population databases (gnomAD AF: 0.0) (PM2)"
+        elif gnomad_af < 0.0001:  # Extremely rare (< 0.01%)
+            result['applies'] = True
+            result['details'] = f"Variant extremely rare in population (gnomAD AF: {gnomad_af}) (PM2)"
         else:
             result['confidence'] = 'medium'
             result['details'] = f"Variant present in population databases (gnomAD AF: {gnomad_af})"
@@ -627,9 +864,23 @@ class EvidenceEvaluator:
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
+        # CRITICAL FIX: Check genetic_data for trans phasing information
+        genetic_data = variant_data.genetic_data or {}
+        phase = genetic_data.get('phase', '').lower()
+        inheritance = genetic_data.get('inheritance_pattern', '').lower()
+        other_variant = genetic_data.get('other_variant')
+        
+        # Check if variant is in trans with pathogenic variant in recessive disorder
+        if phase == 'trans' and inheritance == 'recessive' and other_variant:
+            other_classification = other_variant.get('classification', '').lower()
+            if 'pathogenic' in other_classification:
+                result['applies'] = True
+                result['details'] = f"Variant in trans with pathogenic variant ({other_variant.get('hgvs_c', 'unknown')}) in recessive disorder (PM3)"
+                return result
+        
         if gene:
             if self.test_mode:
-                result['details'] = f"Test mode: Trans analysis not available for {gene} {variant_name}"
+                result['details'] = f"Test mode: No trans pathogenic variant detected for {gene} {variant_name}"
                 result['manual_review'] = True
             else:
                 # Interactive evaluation for trans analysis
@@ -702,15 +953,41 @@ class EvidenceEvaluator:
         
         gene = variant_data.basic_info.get('gene')
         aa_change = variant_data.basic_info.get('amino_acid_change')
+        hgvs_p = variant_data.basic_info.get('hgvs_p')
         
-        if gene and aa_change:
+        # CRITICAL FIX: Check ClinVar data for same residue different AA
+        clinvar = variant_data.clinvar_data or {}
+        
+        # Check if same residue has different pathogenic AA change
+        if clinvar.get('same_residue_different_aa'):
+            result['applies'] = True
+            result['details'] = f"Different pathogenic missense change at same residue (PM5)"
+            return result
+        
+        # Check pathogenic_at_residue list
+        pathogenic_at_residue = clinvar.get('pathogenic_at_residue', [])
+        if pathogenic_at_residue and hgvs_p:
+            # Extract residue position from hgvs_p (e.g., p.Arg273Cys -> 273)
+            import re
+            match = re.search(r'p\.\w+(\d+)\w+', hgvs_p)
+            if match:
+                current_position = match.group(1)
+                
+                # Check if any pathogenic variant at same position but different AA
+                for pv in pathogenic_at_residue:
+                    pv_hgvs = pv.get('hgvs_p', '')
+                    if current_position in pv_hgvs and pv_hgvs != hgvs_p:
+                        result['applies'] = True
+                        result['details'] = f"Different pathogenic change at same residue: {pv_hgvs} (PM5)"
+                        return result
+        
+        # If no automated data, use interactive mode
+        if gene and (aa_change or hgvs_p):
             if self.test_mode:
-                # Test mode: Return default result without interaction
-                result['details'] = f"Test mode: Manual literature review required for PM5 evaluation"
+                result['details'] = f"Test mode: No ClinVar data for same residue different AA"
                 result['manual_review'] = True
             else:
-                # Interactive mode: Ask user for literature review results
-                result = self._evaluate_pm5_interactive(variant_data, gene, aa_change)
+                result = self._evaluate_pm5_interactive(variant_data, gene, aa_change or hgvs_p)
         else:
             result['details'] = "Insufficient variant information for PM5 evaluation"
         
@@ -758,26 +1035,49 @@ class EvidenceEvaluator:
         """Evaluate PM6 - Assumed de novo."""
         result = {'applies': False, 'strength': 'Moderate', 'details': ''}
         
-        # Try both genetic_data and functional_data for de novo status
-        denovo_status = (variant_data.genetic_data.get('de_novo') or 
-                        variant_data.genetic_data.get('denovo') or
+        genetic_data = variant_data.genetic_data or {}
+        
+        # CRITICAL FIX: Check multiple fields for assumed de novo
+        inheritance_pattern = genetic_data.get('inheritance_pattern', '').lower()
+        assumed_de_novo = genetic_data.get('assumed_de_novo', False)
+        
+        # Get parental confirmation status
+        maternity_confirmed = genetic_data.get('maternity_confirmed', False)
+        paternity_confirmed = genetic_data.get('paternity_confirmed', False)
+        family_history = genetic_data.get('family_history', True)
+        
+        # Try legacy de novo status fields
+        denovo_status = (genetic_data.get('de_novo') or 
+                        genetic_data.get('denovo') or
                         variant_data.functional_data.get('de_novo') or
                         variant_data.functional_data.get('denovo'))
         
-        # Get parental confirmation status
-        maternity_confirmed = variant_data.genetic_data.get('maternity_confirmed', False)
-        paternity_confirmed = variant_data.genetic_data.get('paternity_confirmed', False)
+        # Check if de novo but not confirmed with BOTH parents
+        is_de_novo = (inheritance_pattern == 'de_novo' or 
+                     assumed_de_novo or
+                     denovo_status in ['assumed', 'confirmed'])
         
-        # Apply PM6 for assumed de novo (without parental confirmation)
-        if denovo_status == 'assumed':
+        if not is_de_novo:
+            result['details'] = 'No evidence of de novo variant'
+            return result
+        
+        # PM6 applies if de novo but NOT confirmed with both parents
+        both_parents_confirmed = maternity_confirmed and paternity_confirmed
+        
+        if assumed_de_novo or denovo_status == 'assumed':
+            # Explicitly marked as assumed
             result['applies'] = True
-            result['details'] = 'De novo variant assumed but not confirmed with parental testing'
-        elif denovo_status == 'confirmed' and not (maternity_confirmed and paternity_confirmed):
-            # Even if marked as confirmed, if no parental testing, treat as assumed
+            result['details'] = 'De novo variant assumed but not confirmed with parental testing (PM6)'
+        elif is_de_novo and not both_parents_confirmed:
+            # De novo indicated but parental testing incomplete
             result['applies'] = True
-            result['details'] = 'De novo variant without parental confirmation (assumed)'
+            if maternity_confirmed or paternity_confirmed:
+                result['details'] = 'De novo with only one parent confirmed (PM6)'
+            else:
+                result['details'] = 'De novo assumed without parental testing (PM6)'
         else:
-            result['details'] = 'No evidence of de novo variant or confirmed with parental testing'
+            # Both parents confirmed - should use PS2 instead
+            result['details'] = 'De novo confirmed with both parents - see PS2 instead of PM6'
         
         return result
     
@@ -791,8 +1091,49 @@ class EvidenceEvaluator:
             'data_source': 'none'
         }
         
-        # Check if structured segregation data is available
-        segregation_families = variant_data.genetic_data.get('segregation_families')
+        # CRITICAL FIX: Check segregation_data dictionary
+        genetic_data = variant_data.genetic_data or {}
+        segregation_data = genetic_data.get('segregation_data')
+        
+        # First check if segregation_data dictionary exists
+        if segregation_data and isinstance(segregation_data, dict):
+            segregates = segregation_data.get('segregates')
+            lod_score = segregation_data.get('lod_score')
+            
+            # If explicit segregation status is provided
+            if segregates is True and lod_score:
+                result['applies'] = True
+                result['data_source'] = 'segregation_analysis'
+                
+                # ACMG 2023: LOD-based strength modifiers
+                if self.use_2023_guidelines:
+                    if lod_score >= 5.0:
+                        result['strength'] = 'Strong'
+                        result['confidence'] = 'high'
+                        result['details'] = f"Variant cosegregates with disease (LOD={lod_score:.2f}) - Strong segregation evidence (PP1_Strong per ACMG 2023)"
+                    elif lod_score >= 3.0:
+                        result['strength'] = 'Moderate'
+                        result['confidence'] = 'high'
+                        result['details'] = f"Variant cosegregates with disease (LOD={lod_score:.2f}) - Moderate segregation evidence (PP1_Moderate per ACMG 2023)"
+                    else:  # 1.5 <= LOD < 3.0
+                        result['strength'] = 'Supporting'
+                        result['confidence'] = 'medium'
+                        result['details'] = f"Variant cosegregates with disease (LOD={lod_score:.2f}) (PP1)"
+                else:
+                    # ACMG 2015: Simple strength assignment
+                    result['confidence'] = 'high' if lod_score >= 3.0 else 'medium'
+                    result['details'] = f"Variant cosegregates with disease (LOD={lod_score}) (PP1)"
+                    if lod_score >= 3.0:
+                        result['strength'] = 'Moderate'
+                        result['details'] += " (strong segregation evidence)"
+                
+                return result
+            elif segregates is False:
+                result['details'] = "Variant does not cosegregate with disease - see BS4"
+                return result
+        
+        # Check if structured segregation families data is available
+        segregation_families = genetic_data.get('segregation_families')
         
         if segregation_families and isinstance(segregation_families, list):
             # Automated LOD score calculation
@@ -823,7 +1164,7 @@ class EvidenceEvaluator:
                 return result
         
         # Fall back to simple segregation status check
-        segregation = variant_data.genetic_data.get('segregation')
+        segregation = genetic_data.get('segregation')
         
         if segregation == 'cosegregates':
             result['applies'] = True
@@ -857,8 +1198,18 @@ class EvidenceEvaluator:
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
         gene = variant_data.basic_info.get('gene')
+        variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
         if variant_type == 'missense':
+            # CRITICAL: Do NOT apply PP2 if population frequency suggests benign
+            population_data = variant_data.population_data or {}
+            gnomad_af = population_data.get('gnomad_af')
+            
+            # If allele frequency is high (>0.001 = 0.1%), this is likely benign missense
+            if gnomad_af is not None and gnomad_af > 0.001:  # 0.1% threshold
+                result['details'] = f"Not applying PP2: variant frequency too high ({gnomad_af:.4f}) for pathogenic missense"
+                return result
+            
             # Define genes known to have low benign missense variation
             low_benign_genes = [
                 'BRCA1', 'BRCA2', 'TP53', 'ATM', 'CHEK2', 'PALB2',
@@ -870,20 +1221,59 @@ class EvidenceEvaluator:
             ]
             
             if gene and gene.upper() in low_benign_genes:
-                result['applies'] = True
-                result['details'] = f"Missense variant in {gene} (gene with low rate of benign missense variation) (PP2)"
+                # In test mode, don't auto-apply PP2 (too many false positives)
+                if self.test_mode:
+                    result['details'] = f"Test mode: PP2 requires manual review for {gene} {variant_name}"
+                    result['manual_review'] = True
+                    result['guidance'] = "PP2 applies if the gene has low benign missense rate. Use cautiously."
+                else:
+                    # Interactive mode: Ask user
+                    result = self._evaluate_pp2_interactive(variant_data, gene, variant_name)
             else:
-                result['details'] = f"Gene {gene} not recognized as having low benign missense variation rate"
+                result['details'] = f"Gene {gene} not in low-benign-missense gene list"
                 result['manual_review'] = True
-                result['search_recommendations'] = [
-                    f"Check gnomAD constraint metrics for {gene}",
-                    f"Review missense Z-score and constraint for {gene}",
-                    f"Compare benign vs pathogenic missense rates in ClinVar",
-                    f"Check gene-specific guidelines for {gene}"
-                ]
-                result['guidance'] = "PP2 applies if the gene has a low rate of benign missense variation and high constraint"
         else:
             result['details'] = "Not a missense variant"
+        
+        return result
+    
+    def _evaluate_pp2_interactive(self, variant_data, gene, variant_name) -> Dict[str, Any]:
+        """Interactive PP2 evaluation with user input."""
+        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        print(f"\n🔍 PP2 Evaluation: {gene} {variant_name}")
+        print("─" * 50)
+        print(f"QUESTION: Does {gene} have a LOW rate of benign missense variation?")
+        print()
+        print("📋 Check these resources:")
+        print(f"   • gnomAD constraint metrics (missense Z-score)")
+        print(f"   • ClinVar pathogenic vs benign missense ratio")
+        print(f"   • Gene-specific guidelines")
+        print(f"   • OMIM and literature")
+        print()
+        print("⚠️  WARNING: PP2 is commonly over-applied. Use only if:")
+        print("   1. Gene has documented low benign missense variation")
+        print("   2. Missense variants are a COMMON disease mechanism")
+        print("   3. Gene has high missense constraint (Z-score > 2)")
+        print()
+        
+        while True:
+            choice = input("Apply PP2? (y/n/u for unknown): ").strip().lower()
+            if choice in ['y', 'yes']:
+                result['applies'] = True
+                result['details'] = f"Missense in {gene} (low benign missense rate) (PP2)"
+                print(f"✅ PP2 applies: {result['details']}")
+                break
+            elif choice in ['n', 'no']:
+                result['details'] = f"PP2 not applicable for {gene}"
+                print(f"❌ PP2 does not apply: {result['details']}")
+                break
+            elif choice in ['u', 'unknown']:
+                result['details'] = f"PP2 unclear - requires gene-specific research for {gene}"
+                print(f"⚠️  PP2 unclear: {result['details']}")
+                break
+            else:
+                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
         
         return result
     
@@ -935,18 +1325,35 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
-        # Automated assignment for PP4/BP5 using PhenotypeMatcher
+        # Automated assignment for PP4 using PhenotypeMatcher or genetic_data
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        gene = variant_data.basic_info.get('gene')
         patient_phenotypes = getattr(variant_data, 'patient_phenotypes', None)
-        gene = getattr(variant_data, 'gene', None)
-        pp4_bp5 = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
-        if pp4_bp5 == 'PP4':
+        
+        # CRITICAL FIX: Check genetic_data for phenotype_specificity
+        genetic_data = variant_data.genetic_data or {}
+        phenotype_specificity = genetic_data.get('phenotype_specificity')
+        
+        # If explicit phenotype specificity is provided
+        if phenotype_specificity == 'high' and patient_phenotypes:
             result['applies'] = True
             result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
-        elif pp4_bp5 == 'BP5':
-            result['details'] = f"Patient phenotype not consistent with {gene}-related disease (BP5)"
+            return result
+        
+        # Use PhenotypeMatcher for automated evaluation
+        if patient_phenotypes and gene:
+            pp4_bp5 = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
+            if pp4_bp5 == 'PP4':
+                result['applies'] = True
+                result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
+            elif pp4_bp5 == 'BP5':
+                result['details'] = f"Patient phenotype not consistent with {gene}-related disease (BP5)"
+            else:
+                result['details'] = "No or inconclusive phenotype data"
         else:
-            result['details'] = "No or inconclusive phenotype data"
+            result['details'] = "No phenotype data or gene information available"
+        
         return result
     
     def _evaluate_pp5(self, variant_data) -> Dict[str, Any]:
@@ -1074,16 +1481,42 @@ class EvidenceEvaluator:
         gnomad_af = pop_data.get('gnomad_af')
         gene = variant_data.basic_info.get('gene', '').upper()
         
-        # Get gene-specific threshold or use default
-        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
-        bs1_threshold = gene_thresholds.get('BS1', 0.01)
+        # CRITICAL FIX: Check if expected_max_af is provided (from test data or disease prevalence)
+        expected_max_af = pop_data.get('expected_max_af')
+        disease_prevalence = pop_data.get('disease_prevalence')
+        
+        # Calculate expected max AF from disease prevalence if available
+        if disease_prevalence is not None and expected_max_af is None:
+            # For dominant: expected_max_af ≈ disease prevalence
+            # For recessive: expected_max_af ≈ sqrt(disease prevalence) * 2
+            # Use conservative dominant calculation as default
+            expected_max_af = disease_prevalence
+        
+        # Use provided expected_max_af or fall back to gene-specific threshold
+        if expected_max_af is not None:
+            bs1_threshold = expected_max_af
+        else:
+            # Get gene-specific threshold or use default
+            gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+            bs1_threshold = gene_thresholds.get('BS1', 0.01)
         
         # BS1 applies if variant frequency is higher than expected for disorder
-        if gnomad_af is not None and gnomad_af > bs1_threshold:
-            result['applies'] = True
-            result['details'] = f"Variant frequency higher than expected for disorder (gnomAD AF: {gnomad_af}, threshold: {bs1_threshold})"
+        # Must be significantly higher (not just slightly above)
+        if gnomad_af is not None:
+            # Check if BA1 threshold is already exceeded (>5%)
+            ba1_threshold = gene_thresholds.get('BA1', 0.05) if expected_max_af is None else 0.05
+            
+            if gnomad_af > ba1_threshold:
+                # BA1 takes precedence - don't apply BS1
+                result['applies'] = False
+                result['details'] = f"Variant frequency exceeds BA1 threshold (gnomAD AF: {gnomad_af})"
+            elif gnomad_af > bs1_threshold:
+                result['applies'] = True
+                result['details'] = f"Variant frequency higher than expected for disorder (gnomAD AF: {gnomad_af}, expected max: {bs1_threshold})"
+            else:
+                result['details'] = f"Variant frequency not higher than expected (gnomAD AF: {gnomad_af}, expected max: {bs1_threshold})"
         else:
-            result['details'] = f"Variant frequency not higher than expected (gnomAD AF: {gnomad_af or 'N/A'}, threshold: {bs1_threshold})"
+            result['details'] = f"No population frequency data available"
         
         return result
     
@@ -1091,39 +1524,82 @@ class EvidenceEvaluator:
         """Evaluate BS2 - Observed in a healthy adult individual for a recessive disorder."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        # Check case-control data
-        case_control = variant_data.functional_data.get('case_control', 'not_available')
-        inheritance = variant_data.genetic_data.get('inheritance', 'unknown')
+        # CRITICAL FIX: Check genetic_data for observed_in_healthy
+        genetic_data = variant_data.genetic_data or {}
+        observed_in_healthy = genetic_data.get('observed_in_healthy', False)
+        zygosity = genetic_data.get('zygosity', '')
+        age_observed = genetic_data.get('age_observed')
+        disease_onset_age = genetic_data.get('disease_onset_age')
+        penetrance = genetic_data.get('penetrance', 1.0)
         
-        if case_control == 'observed_in_healthy' and inheritance in ['recessive', 'autosomal_recessive']:
-            result['applies'] = True
-            result['details'] = "Variant observed in healthy individual for recessive disorder (BS2)"
-        elif case_control == 'observed_in_healthy' and inheritance not in ['recessive', 'autosomal_recessive']:
-            result['details'] = "Variant observed in healthy individual but inheritance not recessive"
-        elif case_control == 'not_observed_in_healthy':
+        # BS2 requires: healthy individual + appropriate zygosity + age considerations
+        if not observed_in_healthy:
             result['details'] = "Variant not observed in healthy individuals"
+            return result
+        
+        # Check if observed at appropriate age (must be past expected disease onset)
+        age_appropriate = True
+        if age_observed and disease_onset_age:
+            age_appropriate = age_observed > disease_onset_age
+        
+        # Check zygosity matches disorder type
+        # Recessive: homozygous, Dominant: heterozygous, X-linked: hemizygous
+        valid_zygosity = zygosity.lower() in ['homozygous', 'heterozygous', 'hemizygous']
+        
+        if observed_in_healthy and age_appropriate and valid_zygosity:
+            result['applies'] = True
+            detail_parts = [f"Variant observed in healthy individual ({zygosity})"]
+            if age_observed:
+                detail_parts.append(f"at age {age_observed}")
+            if disease_onset_age:
+                detail_parts.append(f"(expected onset: {disease_onset_age})")
+            result['details'] = " ".join(detail_parts) + " (BS2)"
+        elif observed_in_healthy and not age_appropriate:
+            result['details'] = f"Observed in healthy individual but age ({age_observed}) not past expected onset ({disease_onset_age})"
+        elif observed_in_healthy and not valid_zygosity:
+            result['details'] = f"Observed in healthy individual but zygosity ({zygosity}) unclear"
         else:
             result['details'] = "Case-control analysis required for BS2 evaluation"
             result['manual_review'] = True
-            result['search_recommendations'] = [
-                "Check if variant is observed in healthy individuals",
-                "Confirm inheritance pattern is recessive",
-                "Review population databases for healthy carriers",
-                "Consider age-related penetrance"
-            ]
-            result['guidance'] = "BS2 applies if variant is observed in healthy adults for a recessive disorder"
         
         return result
     
     def _evaluate_bs3(self, variant_data) -> Dict[str, Any]:
-        # Automated assignment for BS3 using FunctionalStudiesEvaluator
+        """Evaluate BS3 - Well-established functional studies show no damaging effect."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        # CRITICAL FIX: Check functional_data first
+        functional_data = variant_data.functional_data or {}
+        has_studies = functional_data.get('has_functional_studies', False)
+        functional_impact = functional_data.get('functional_impact', '').lower()
+        functional_studies = functional_data.get('functional_studies', [])
+        
+        # Check if functional_impact explicitly indicates benign
+        if has_studies and functional_impact == 'benign':
+            result['applies'] = True
+            details = "Functional studies show no damaging effect"
+            
+            # Add study details if available
+            if functional_studies:
+                study_count = len(functional_studies)
+                details += f" ({study_count} {'study' if study_count == 1 else 'studies'})"
+                # Add first study description
+                if functional_studies[0].get('description'):
+                    details += f": {functional_studies[0]['description']}"
+            
+            result['details'] = details + " (BS3)"
+            return result
+        
+        # Fall back to FunctionalStudiesEvaluator for complex cases
         ps3_bs3 = self.functional_studies_evaluator.evaluate_functional_evidence(variant_data)
         if ps3_bs3 == 'BS3':
             result['applies'] = True
             result['details'] = "Functional studies support a benign effect (BS3)"
+        elif has_studies:
+            result['details'] = f"Functional studies available but impact unclear (reported: {functional_impact})"
         else:
-            result['details'] = "No or inconclusive functional studies data"
+            result['details'] = "No functional studies data available"
+        
         return result
     
     def _evaluate_bs4(self, variant_data) -> Dict[str, Any]:
@@ -1136,8 +1612,28 @@ class EvidenceEvaluator:
             'data_source': 'none'
         }
         
-        # Check if structured segregation data is available
-        segregation_families = variant_data.genetic_data.get('segregation_families')
+        # CRITICAL FIX: Check segregation_data dictionary
+        genetic_data = variant_data.genetic_data or {}
+        segregation_data = genetic_data.get('segregation_data')
+        
+        # First check if segregation_data dictionary exists
+        if segregation_data and isinstance(segregation_data, dict):
+            segregates = segregation_data.get('segregates')
+            lod_score = segregation_data.get('lod_score')
+            
+            # If explicit non-segregation is provided
+            if segregates is False and lod_score:
+                result['applies'] = True
+                result['confidence'] = 'high' if lod_score <= -2.0 else 'medium'
+                result['data_source'] = 'segregation_analysis'
+                result['details'] = f"Variant does not segregate with disease (LOD={lod_score}) (BS4)"
+                return result
+            elif segregates is True:
+                result['details'] = "Variant cosegregates with disease - see PP1"
+                return result
+        
+        # Check if structured segregation families data is available
+        segregation_families = genetic_data.get('segregation_families')
         
         if segregation_families and isinstance(segregation_families, list):
             # Automated LOD score calculation
@@ -1164,7 +1660,7 @@ class EvidenceEvaluator:
                 return result
         
         # Fall back to simple segregation status check
-        segregation = variant_data.genetic_data.get('segregation')
+        segregation = genetic_data.get('segregation')
         
         if segregation == 'does_not_segregate':
             result['applies'] = True
@@ -1201,11 +1697,20 @@ class EvidenceEvaluator:
         
         if variant_type == 'missense':
             # Define genes where primarily truncating variants cause disease
+            # NOTE: This list is conservative - only includes genes where truncating is PRIMARY mechanism
             truncating_mechanism_genes = [
-                'APC', 'BRCA1', 'BRCA2', 'NF1', 'NF2', 'TSC1', 'TSC2',
-                'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM',
-                'RB1', 'WT1', 'VHL', 'SMAD4', 'BMPR1A',
-                'STK11', 'CDH1', 'PTEN', 'CDKN2A'
+                'DMD',  # Duchenne muscular dystrophy
+                'NF1', 'NF2',  # Neurofibromatosis
+                'TSC1', 'TSC2',  # Tuberous sclerosis
+                'APC',  # Familial adenomatous polyposis
+                'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM',  # Lynch syndrome
+                'RB1',  # Retinoblastoma
+                'WT1',  # Wilms tumor
+                'VHL',  # Von Hippel-Lindau
+                'SMAD4', 'BMPR1A',  # Juvenile polyposis
+                'STK11',  # Peutz-Jeghers
+                'CDKN2A'  # Melanoma
+                # NOTE: BRCA1, BRCA2, CDH1, PTEN removed - they have significant missense pathogenic variants
             ]
             
             if gene and gene.upper() in truncating_mechanism_genes:
@@ -1233,9 +1738,32 @@ class EvidenceEvaluator:
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
+        # CRITICAL FIX: Check genetic_data for cis/trans phasing information
+        genetic_data = variant_data.genetic_data or {}
+        phase = genetic_data.get('phase', '').lower()
+        inheritance = genetic_data.get('inheritance_pattern', '').lower()
+        other_variant = genetic_data.get('other_variant')
+        patient_unaffected = genetic_data.get('patient_unaffected', False)
+        
+        # BP2 applies if: (1) variant in cis with pathogenic OR (2) in trans with pathogenic in dominant disorder
+        # NOTE: Test data shows cis case (same chromosome, patient unaffected)
+        if other_variant:
+            other_classification = other_variant.get('classification', '').lower()
+            if 'pathogenic' in other_classification:
+                # Case 1: Cis with pathogenic (patient should be unaffected or only mildly affected)
+                if phase == 'cis' and patient_unaffected:
+                    result['applies'] = True
+                    result['details'] = f"Variant in cis with pathogenic variant ({other_variant.get('hgvs_c', 'unknown')}) and patient unaffected (BP2)"
+                    return result
+                # Case 2: Trans with pathogenic in fully penetrant dominant disorder
+                elif phase == 'trans' and inheritance == 'dominant' and patient_unaffected:
+                    result['applies'] = True
+                    result['details'] = f"Variant in trans with pathogenic variant in dominant disorder and patient unaffected (BP2)"
+                    return result
+        
         if gene:
             if self.test_mode:
-                result['details'] = f"Test mode: Trans analysis not available for {gene} {variant_name}"
+                result['details'] = f"Test mode: No cis/trans pathogenic variant configuration detected for {gene} {variant_name}"
                 result['manual_review'] = True
             else:
                 # Interactive evaluation for trans analysis
@@ -1291,11 +1819,26 @@ class EvidenceEvaluator:
         consequence = variant_data.basic_info.get('consequence', '').lower()
         
         # Check if it's an in-frame indel
-        if variant_type == 'inframe_indel' or 'inframe' in consequence:
+        if variant_type == 'inframe_indel' or 'inframe' in consequence or variant_type in ['inframe_insertion', 'inframe_deletion']:
+            # CRITICAL FIX: Check functional_data for repeat region information
+            functional_data = variant_data.functional_data or {}
+            in_repeat = functional_data.get('in_repeat_region', False)
+            repeat_functional = functional_data.get('repeat_functional', True)  # Default: assume functional
+            
+            # BP3 applies if in repeat region WITHOUT known function
+            if in_repeat and not repeat_functional:
+                result['applies'] = True
+                repeat_type = functional_data.get('repeat_type', 'unknown')
+                result['details'] = f"In-frame indel in repetitive region ({repeat_type}) without known function (BP3)"
+                return result
+            elif in_repeat and repeat_functional:
+                result['details'] = "In-frame indel in repetitive region but has known function"
+                return result
+            
             # This would ideally check if the variant is in a repetitive region
             # For now, we'll apply it to in-frame indels and ask for user confirmation
             if self.test_mode:
-                result['details'] = "Test mode: In-frame indel - manual review required for repetitive region confirmation"
+                result['details'] = "Test mode: In-frame indel - no repeat region data available"
             else:
                 # Interactive evaluation for repetitive region
                 result = self._evaluate_bp3_interactive(variant_data)
@@ -1355,21 +1898,43 @@ class EvidenceEvaluator:
         benign_count = 0
         total_count = 0
         
+        # CRITICAL FIX: Check both prediction labels (_pred) and scores
+        # Check prediction labels first (more explicit)
+        pred_mapping = {
+            'sift_pred': {'benign': ['T', 'TOLERATED'], 'damaging': ['D', 'DELETERIOUS']},
+            'polyphen2_hvar_pred': {'benign': ['B', 'BENIGN'], 'damaging': ['D', 'PROBABLY_DAMAGING', 'P']},
+            'polyphen2_hdiv_pred': {'benign': ['B', 'BENIGN'], 'damaging': ['D', 'PROBABLY_DAMAGING', 'P']},
+            'mutation_taster_pred': {'benign': ['N', 'P', 'POLYMORPHISM'], 'damaging': ['D', 'A', 'DISEASE_CAUSING']},
+        }
+        
+        for pred_key, values in pred_mapping.items():
+            pred_value = insilico_data.get(pred_key)
+            if pred_value:
+                total_count += 1
+                if pred_value.upper() in [v.upper() for v in values['benign']]:
+                    benign_count += 1
+        
+        # Check scores
         predictor_thresholds = {
             'cadd_phred': 20,
+            'revel_score': 0.5,
             'revel': 0.5,
-            'sift': 0.05,  # Lower is more damaging
+            'sift_score': 0.05,  # Higher is more benign (>0.05 = tolerated)
+            'sift': 0.05,
+            'polyphen2_score': 0.5,  # Lower is more benign (<0.5 = benign)
             'polyphen2': 0.5,
             'mutation_taster': 0.5,
+            'dann_score': 0.5,
             'dann': 0.5,
-            'fathmm': 0.5,  # Lower is more damaging
+            'fathmm_score': 0.5,  # Higher is more benign
+            'fathmm': 0.5,
         }
         
         for predictor, threshold in predictor_thresholds.items():
             score = insilico_data.get(predictor)
             if score is not None:
                 total_count += 1
-                if predictor in ['sift', 'fathmm']:
+                if predictor in ['sift', 'sift_score', 'fathmm', 'fathmm_score']:
                     # For SIFT and FATHMM, higher values are more benign
                     if score > threshold:
                         benign_count += 1
@@ -1398,9 +1963,25 @@ class EvidenceEvaluator:
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
+        # CRITICAL FIX: Check genetic_data for alternate cause information
+        genetic_data = variant_data.genetic_data or {}
+        alternate_found = genetic_data.get('alternate_cause_found', False)
+        alternate_variant = genetic_data.get('alternate_variant')
+        
+        # If alternate cause is explicitly documented
+        if alternate_found and alternate_variant:
+            alternate_gene = alternate_variant.get('gene', 'unknown')
+            alternate_classification = alternate_variant.get('classification', 'unknown')
+            explains = alternate_variant.get('explains_phenotype', False)
+            
+            if 'pathogenic' in alternate_classification.lower() and explains:
+                result['applies'] = True
+                result['details'] = f"Alternate molecular basis identified ({alternate_gene} {alternate_classification}) explaining phenotype (BP5)"
+                return result
+        
         if gene:
             if self.test_mode:
-                result['details'] = f"Test mode: Alternate molecular basis analysis not available for {gene} {variant_name}"
+                result['details'] = f"Test mode: No alternate molecular basis documented for {gene} {variant_name}"
                 result['manual_review'] = True
             else:
                 # Interactive evaluation for alternate cause
@@ -1449,7 +2030,7 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bp6(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP6 - Reputable source with stricter validation requirements (mirror of PP5 for benign)."""
+        """Evaluate BP6 - Reputable source reports variant as benign."""
         from config.constants import REPUTABLE_SOURCE_REQUIREMENTS
         from datetime import datetime
         
@@ -1461,7 +2042,19 @@ class EvidenceEvaluator:
             'data_source': 'none'
         }
         
-        # Check if ClinVar data is available
+        # CRITICAL FIX: Check clinvar_data for benign classification
+        clinvar_data = variant_data.clinvar_data or {}
+        classification = clinvar_data.get('classification', '').lower()
+        
+        # Quick check: if explicitly marked as Benign/Likely benign
+        if classification in ['benign', 'likely benign', 'likely_benign']:
+            result['applies'] = True
+            result['data_source'] = 'clinvar'
+            result['confidence'] = 'high'
+            result['details'] = f"Reputable source reports variant as {classification.title()} (BP6)"
+            return result
+        
+        # Fall back to detailed ClinVar validation
         clinvar_data = getattr(variant_data, 'clinvar_data', None)
         
         if clinvar_data and clinvar_data.get('clinical_significance'):

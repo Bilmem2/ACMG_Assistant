@@ -13,13 +13,14 @@ Last Updated: July 10, 2025
 
 # Version and metadata information
 VERSION_INFO = {
-    'version': '3.3.0',
+    'version': '3.4.0',
     'author': 'Can Sevilmiş',
     'license': 'MIT License',
-    'last_updated': 'October 3, 2025',
+    'last_updated': 'October 6, 2025',
     'guidelines': 'ACMG/AMP 2015 & 2023',
-    'description': 'ACMG Variant Classification Assistant with Enhanced Reliability Features',
+    'description': 'ACMG Variant Classification Assistant - Dual Guidelines Support',
     'major_features': [
+        'Dual-mode ACMG 2015/2023 guidelines support',
         'Complete 28 ACMG/AMP criteria implementation',
         'Interactive evidence evaluation',
         'Enhanced computational metascore',
@@ -29,11 +30,12 @@ VERSION_INFO = {
         'LOF intolerant/tolerant gene classification',
         'Ensembl API integration for chromosome lookup',
         'Improved input validation and error handling',
-        '✨ NEW: Confidence & provenance tracking',
-        '✨ NEW: Automated Fisher\'s exact test (PS4)',
-        '✨ NEW: Automated LOD scoring (PP1/BS4)',
-        '✨ NEW: Strict PS2 2023 upgrade rules',
-        '✨ NEW: Stricter PP5/BP6 source validation'
+        '✨ Confidence & provenance tracking',
+        '✨ Automated Fisher\'s exact test (PS4)',
+        '✨ Automated LOD scoring (PP1/BS4)',
+        '✨ Strict PS2 2023 upgrade rules',
+        '✨ Stricter PP5/BP6 source validation',
+        '✨ HGVS format support with auto-extraction'
     ]
 }
 
@@ -70,7 +72,7 @@ CLASSIFICATION_RULES = {
         'rules': [
             {'stand_alone': 1},
             {'strong': 2},
-            {'strong': 1, 'supporting': 1}
+            {'strong': 1, 'supporting': 2}  # ACMG 2015: 1 BS + ≥2 BP required for Benign
         ]
     },
     'Likely Benign': {
@@ -135,15 +137,39 @@ VAMPP_SCORE_THRESHOLDS = {
 }
 
 # Statistical thresholds for various analyses
-STATISTICAL_THRESHOLDS = {
+# DEFAULT: ACMG 2015 Guidelines
+STATISTICAL_THRESHOLDS_2015 = {
     'fisher_exact_p_value': 0.05,
     'case_control_odds_ratio': 2.0,
-    'segregation_lod_score': 3.0,
-    'segregation_lod_supporting': 1.5,  # Minimum LOD for PP1
+    'case_control_min_cases': 5,  # Minimum affected probands
+    'case_control_min_controls': 1000,  # Minimum control individuals
+    'segregation_lod_score': 3.0,  # LOD ≥ 3.0 for strong support
+    'segregation_lod_supporting': 1.5,  # LOD ≥ 1.5 for PP1
     'segregation_families_min': 3,  # Minimum families for PP1/BS4
     'splice_ai_threshold': 0.5,
-    'conservation_threshold': 2.0
+    'conservation_threshold': 2.0,
+    'pm5_min_pathogenic_variants': 1  # ≥1 pathogenic variant at same codon
 }
+
+# ACMG 2023 Updates (ClinGen SVI Working Group)
+STATISTICAL_THRESHOLDS_2023 = {
+    'fisher_exact_p_value': 0.05,
+    'case_control_odds_ratio': 5.0,  # Increased from 2.0 to 5.0 for PS4
+    'case_control_min_cases': 10,  # Increased minimum affected probands
+    'case_control_min_controls': 2000,  # Increased minimum controls
+    'segregation_lod_score': 3.0,  # LOD ≥ 3.0 for PP1_Moderate
+    'segregation_lod_supporting': 1.5,  # LOD 1.5-2.99 for PP1_Supporting
+    'segregation_lod_moderate': 3.0,  # LOD 3.0-4.99 for PP1_Moderate
+    'segregation_lod_strong': 5.0,  # LOD ≥ 5.0 for PP1_Strong
+    'segregation_lod_bs4': -2.0,  # LOD ≤ -2.0 for BS4
+    'segregation_families_min': 3,  # Minimum informative meioses
+    'splice_ai_threshold': 0.5,
+    'conservation_threshold': 2.0,
+    'pm5_min_pathogenic_variants': 2  # ≥2 pathogenic variants at same codon
+}
+
+# Default to ACMG 2015
+STATISTICAL_THRESHOLDS = STATISTICAL_THRESHOLDS_2015
 
 # Confidence levels for evidence criteria
 CONFIDENCE_LEVELS = {
@@ -229,7 +255,15 @@ VALIDATION_PATTERNS = {
     'gene_symbol': r'^[A-Z][A-Z0-9-]*$',  # Alias for gene
     'chromosome': r'^(chr)?(([1-9]|1[0-9]|2[0-2])|[XYM])$',
     'position': r'^\d+$',
-    'allele': r'^[ATCG]+$'
+    'allele': r'^[ATCG]+$',
+    # HGVS cDNA patterns - supports both simple and full format
+    # Full format: NM_000546.6:c.1528C>T
+    # Simple format: c.1528C>T or 1528C>T
+    'hgvs_cdna_full': r'^(NM_\d+\.\d+):c\.[\d\+\-\*]+[A-Z]>[A-Z]',
+    'hgvs_cdna_simple': r'^c\.[\d\+\-\*]+[A-Z]>[A-Z]',
+    'hgvs_cdna': r'^(NM_\d+\.\d+:)?c\.[\d\+\-\*]+[A-Z]>[A-Z]',
+    # Also support position-only format like 1528C>T
+    'position_variant': r'^[\d\+\-\*]+[A-Z]>[A-Z]$'
 }
 
 # Variant consequences
