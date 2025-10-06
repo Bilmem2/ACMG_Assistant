@@ -1,11 +1,10 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**ACMG/AMP Variant Classification with Statistical Framework**  
-**Version 3.3.0**
+**Version 3.4.0**
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version (v3.3.0) from Google Drive](https://drive.google.com/file/d/1xA23n8CubrDzUJIaolqwKrWVq4nHDnvF/view?usp=sharing)**  
+> **📥 [Download Latest Version (v3.4.0) from Google Drive](https://drive.google.com/file/d/10pU9QmJkHky23B39JefU8RUsdNSmOAJX/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
