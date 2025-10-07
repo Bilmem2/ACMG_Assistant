@@ -57,6 +57,9 @@ RELEASE_NOTES_*.md
 CLEANUP_PLAN_*.md
 GIT_PUSH_STRATEGY.md
 commit_message.txt
+CLINVAR_DRUG_RESPONSE_FIX.md
+erepo.oas2.yml
+/ClinGen_gene_curation_list_GRCh38.tsv
 
 # Test files - specific patterns
 test_interactive.py
