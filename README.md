@@ -1,6 +1,5 @@
 # 🧬 ACMG Variant Classification Assistant
 
-**Version 3.4.0**
 
 ## **Quick Start**
 
