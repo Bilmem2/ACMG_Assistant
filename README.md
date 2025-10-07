@@ -4,7 +4,7 @@
 
 ## **Quick Start**
 
-> **📥 [Download Latest Version (v3.4.0) from Google Drive](https://drive.google.com/file/d/10pU9QmJkHky23B39JefU8RUsdNSmOAJX/view?usp=sharing)**  
+> **📥 [Download Latest Version from Google Drive](https://drive.google.com/file/d/1Xmtoix2V55DXWxRykt7X2v8UNJ7m7xMZ/view?usp=sharing)**  
 > 
 > **Ready-to-use standalone executable - No Python installation required!**  
 > 1. Download and extract the zip file  
@@ -13,7 +13,7 @@
 
 ---
 
-![v3 3 0 screenshot](https://github.com/user-attachments/assets/dad9b471-65cd-4ac9-b5da-e5da3ddb9c21)
+<img width="1113" height="627" alt="image" src="https://github.com/user-attachments/assets/f0b527b3-8bc6-4727-a58e-151f94c70d41" />
 Screenshot of the CLI welcome page
 
 ## ⚙️ Key Features
