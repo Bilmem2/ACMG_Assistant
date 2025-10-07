@@ -13,7 +13,7 @@ from colorama import Fore, Style, init
 from config.constants import (
     COLORAMA_COLORS, SECTION_HEADERS, ERROR_MESSAGES, SUCCESS_MESSAGES,
     WARNING_MESSAGES, INFO_MESSAGES, get_colored_message, TEST_MODE_DATA,
-    VALIDATION_PATTERNS, ALIASES, ALL_VARIANT_CONSEQUENCES
+    TEST_SCENARIOS, VALIDATION_PATTERNS, ALIASES, ALL_VARIANT_CONSEQUENCES
 )
 from utils.hgvs_parser import HGVSParser, parse_hgvs_variant
 
@@ -39,6 +39,81 @@ class InputHandler:
         self.test_mode = test_mode
         self.api_client = api_client
         self.collected_data = {}
+        self.selected_scenario = None  # Track selected test scenario
+        
+        # If test mode, let user select scenario
+        if self.test_mode:
+            self.selected_scenario = self._select_test_scenario()
+    
+    def _select_test_scenario(self) -> str:
+        """
+        Display available test scenarios and let user select one.
+        
+        Returns:
+            str: Selected scenario key
+        """
+        print(f"\n{COLORAMA_COLORS['MAGENTA']}{'='*120}{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['MAGENTA']}{COLORAMA_COLORS['BOLD']}{'🧪 TEST MODE - Select Test Scenario'.center(120)}{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['MAGENTA']}{'='*120}{COLORAMA_COLORS['RESET']}\n")
+        
+        # Display scenarios in table format
+        scenarios = list(TEST_SCENARIOS.keys())
+        
+        # Table header
+        print(f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}", end='')
+        print(f"{'#':<4} {'Scenario Name':<45} {'Gene':<8} {'Type':<15} {'Expected':<18} {'Criteria':<20}")
+        print(f"{'-'*120}{COLORAMA_COLORS['RESET']}")
+        
+        # Table rows
+        for i, scenario_key in enumerate(scenarios, 1):
+            scenario = TEST_SCENARIOS[scenario_key]
+            gene = scenario['basic_info']['gene']
+            variant_type = scenario['basic_info']['variant_type']
+            expected = scenario['expected_classification']
+            criteria_str = ', '.join(scenario['expected_criteria'][:3])
+            if len(scenario['expected_criteria']) > 3:
+                criteria_str += f" +{len(scenario['expected_criteria'])-3}"
+            
+            # Color based on expected classification
+            if 'Pathogenic' in expected and 'Likely' not in expected:
+                color = COLORAMA_COLORS['RED']
+            elif 'Likely Pathogenic' in expected:
+                color = COLORAMA_COLORS['YELLOW']
+            elif 'Benign' in expected and 'Likely' not in expected:
+                color = COLORAMA_COLORS['GREEN']
+            elif 'Likely Benign' in expected:
+                color = COLORAMA_COLORS['CYAN']
+            else:
+                color = COLORAMA_COLORS['WHITE']
+            
+            print(f"{color}{i:<4} {scenario['name']:<45} {gene:<8} {variant_type:<15} {expected:<18} {criteria_str:<20}{COLORAMA_COLORS['RESET']}")
+        
+        print(f"\n{COLORAMA_COLORS['CYAN']}Legend: {COLORAMA_COLORS['RED']}Pathogenic{COLORAMA_COLORS['RESET']} | ", end='')
+        print(f"{COLORAMA_COLORS['YELLOW']}Likely Pathogenic{COLORAMA_COLORS['RESET']} | ", end='')
+        print(f"{COLORAMA_COLORS['GREEN']}Benign{COLORAMA_COLORS['RESET']} | ", end='')
+        print(f"{COLORAMA_COLORS['CYAN']}Likely Benign{COLORAMA_COLORS['RESET']} | ", end='')
+        print(f"{COLORAMA_COLORS['WHITE']}VUS{COLORAMA_COLORS['RESET']}\n")
+        
+        # Get user selection
+        while True:
+            try:
+                choice = input(f"{COLORAMA_COLORS['YELLOW']}Select scenario (1-{len(scenarios)}): {COLORAMA_COLORS['RESET']}")
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(scenarios):
+                    selected_key = scenarios[choice_idx]
+                    selected_scenario = TEST_SCENARIOS[selected_key]
+                    print(f"\n{COLORAMA_COLORS['GREEN']}{'='*120}{COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['GREEN']}{COLORAMA_COLORS['BOLD']}✅ Selected: {selected_scenario['name']}{COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['CYAN']}Gene: {selected_scenario['basic_info']['gene']}{COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['CYAN']}Variant: {selected_scenario['basic_info']['hgvs_protein']} ({selected_scenario['basic_info']['variant_type']}){COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['YELLOW']}Expected Classification: {selected_scenario['expected_classification']}{COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['MAGENTA']}Expected Criteria: {', '.join(selected_scenario['expected_criteria'])}{COLORAMA_COLORS['RESET']}")
+                    print(f"{COLORAMA_COLORS['GREEN']}{'='*120}{COLORAMA_COLORS['RESET']}\n")
+                    return selected_key
+                else:
+                    print(f"{COLORAMA_COLORS['RED']}❌ Invalid choice. Please select 1-{len(scenarios)}.{COLORAMA_COLORS['RESET']}")
+            except (ValueError, KeyboardInterrupt):
+                print(f"{COLORAMA_COLORS['RED']}❌ Invalid input. Please enter a number.{COLORAMA_COLORS['RESET']}")
     
     def print_header(self, title: str):
         """Print a formatted header."""
@@ -80,9 +155,10 @@ class InputHandler:
         """
         self.print_section("basic_info")
         
-        if self.test_mode:
-            self.print_info("Using test mode sample data...")
-            return TEST_MODE_DATA['basic_info'].copy()
+        if self.test_mode and self.selected_scenario:
+            scenario_data = TEST_SCENARIOS[self.selected_scenario]
+            self.print_info(f"Using test scenario: {scenario_data['name']}")
+            return scenario_data['basic_info'].copy()
         
         basic_info = {}
         
@@ -397,9 +473,10 @@ class InputHandler:
         print("💡 Lower frequencies support pathogenicity.")
         print("💡 Use 'NA' or leave empty if data is not available.")
         
-        if self.test_mode:
-            print("🧪 Using test mode sample data...")
-            return TEST_MODE_DATA['population_data'].copy()
+        if self.test_mode and self.selected_scenario:
+            scenario_data = TEST_SCENARIOS[self.selected_scenario]
+            print(f"🧪 Using test scenario: {scenario_data['name']}")
+            return scenario_data['population_data'].copy()
         
         population_data = {}
         
@@ -470,9 +547,10 @@ class InputHandler:
         print("💡 You can skip rarely used predictors if time is limited.")
         print("💡 Some predictors have both raw and ranked scores - choose accordingly.")
         
-        if self.test_mode:
-            print("🧪 Using test mode sample data...")
-            return TEST_MODE_DATA['insilico_data'].copy()
+        if self.test_mode and self.selected_scenario:
+            scenario_data = TEST_SCENARIOS[self.selected_scenario]
+            print(f"🧪 Using test scenario: {scenario_data['name']}")
+            return scenario_data['insilico_data'].copy()
         
         insilico_data = {}
         
@@ -984,9 +1062,10 @@ class InputHandler:
         print("\n🧬 GENETIC DATA")
         print("-" * 30)
         
-        if self.test_mode:
-            print("🧪 Using test mode sample data...")
-            return TEST_MODE_DATA['genetic_data'].copy()
+        if self.test_mode and self.selected_scenario:
+            scenario_data = TEST_SCENARIOS[self.selected_scenario]
+            print(f"🧪 Using test scenario: {scenario_data['name']}")
+            return scenario_data['genetic_data'].copy()
         
         genetic_data = {}
         
@@ -1053,9 +1132,10 @@ class InputHandler:
         print("\n🔬 FUNCTIONAL DATA")
         print("-" * 30)
         
-        if self.test_mode:
-            print("🧪 Using test mode sample data...")
-            return TEST_MODE_DATA['functional_data'].copy()
+        if self.test_mode and self.selected_scenario:
+            scenario_data = TEST_SCENARIOS[self.selected_scenario]
+            print(f"🧪 Using test scenario: {scenario_data['name']}")
+            return scenario_data['functional_data'].copy()
         
         functional_data = {}
         

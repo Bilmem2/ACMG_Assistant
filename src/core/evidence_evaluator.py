@@ -117,6 +117,19 @@ class EvidenceEvaluator:
         self.test_mode = test_mode
         self.applied_criteria = {}
         self.evidence_details = {}
+        
+        # Initialize API client for gnomAD/ClinVar integration
+        from utils.api_client import APIClient
+        from config.constants import API_SETTINGS
+        
+        try:
+            self.api_client = APIClient(cache_enabled=True)
+            self.api_enabled = API_SETTINGS.get('enabled', True)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not initialize API client: {str(e)}")
+            self.api_client = None
+            self.api_enabled = False
+        
         # Yeni modüller entegre ediliyor
         from core.functional_studies_evaluator import FunctionalStudiesEvaluator
         from core.phenotype_matcher import PhenotypeMatcher
@@ -217,9 +230,8 @@ class EvidenceEvaluator:
         # PP4 - Phenotype match
         pathogenic['PP4'] = self._evaluate_pp4(variant_data)
         
-        # PP5 - Reputable source (if enabled)
-        if self.use_2023_guidelines:
-            pathogenic['PP5'] = self._evaluate_pp5(variant_data)
+        # PP5 - Reputable source (available in both 2015 and 2023)
+        pathogenic['PP5'] = self._evaluate_pp5(variant_data)
         
         return pathogenic
     
@@ -266,30 +278,140 @@ class EvidenceEvaluator:
         return benign
     
     def _evaluate_pvs1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PVS1 - Null variant in LOF gene."""
-        result = {'applies': False, 'strength': 'Very Strong', 'details': ''}
+        """
+        Evaluate PVS1 - Null variant in LOF gene.
+        
+        Now enhanced with:
+        1. gnomAD constraint API integration for dynamic LOF intolerance determination
+        2. ClinGen Dosage Sensitivity Map for haploinsufficiency evidence
+        3. PVS1 strength modulation based on HI score (Quick Win #4)
+        """
+        result = {'applies': False, 'strength': 'Very Strong', 'details': '', 'data_source': 'manual'}
         
         variant_type = variant_data.basic_info.get('variant_type', '').lower()
         consequence = variant_data.basic_info.get('consequence', '').lower()
         gene = variant_data.basic_info.get('gene', '').upper()
         
         # Check if it's a loss-of-function variant
-        lof_types = ['nonsense', 'frameshift', 'splice_donor', 'splice_acceptor', 'start_lost']
+        lof_types = ['nonsense', 'frameshift', 'splice_donor', 'splice_acceptor', 'start_lost', 'stop_lost']
         lof_consequences = ['stop_gained', 'frameshift_variant', 'splice_donor_variant', 
-                           'splice_acceptor_variant', 'start_lost']
+                           'splice_acceptor_variant', 'start_lost', 'stop_lost']
         
         if variant_type in lof_types or consequence in lof_consequences:
-            # Check if gene is LOF intolerant (required for PVS1)
-            if gene in LOF_INTOLERANT_GENES:
-                result['applies'] = True
-                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF intolerant gene {gene}"
-            elif gene in LOF_TOLERANT_GENES:
-                result['applies'] = False
-                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF tolerant gene {gene} - PVS1 not applicable"
+            # ENHANCED: Multi-source validation (gnomAD + ClinGen + Dosage Sensitivity)
+            lof_status = self._check_lof_intolerance(gene)
+            clingen_status = self._check_clingen_validity(gene)
+            dosage_status = self._check_clingen_dosage_sensitivity(gene)  # Quick Win #4: NEW
+            
+            # Combine all three sources for decision
+            if lof_status['source'] == 'gnomAD' or clingen_status['source'] == 'ClinGen' or dosage_status['source'] == 'ClinGen Dosage':
+                # API-based determination (MULTI-SOURCE)
+                pLI_val = lof_status.get('pLI', 0)
+                LOEUF_val = lof_status.get('LOEUF', 0)
+                
+                # Check for conflict with manual list
+                in_manual_intolerant = gene in LOF_INTOLERANT_GENES
+                in_manual_tolerant = gene in LOF_TOLERANT_GENES
+                
+                # Decision logic: ClinGen LOF mechanism OR gnomAD intolerant OR dosage HI
+                apply_pvs1 = False
+                data_sources = []
+                details_parts = []
+                
+                # ClinGen takes priority for disease-specific mechanism
+                if clingen_status.get('supports_lof_pathogenicity'):
+                    apply_pvs1 = True
+                    lof_diseases = clingen_status.get('lof_diseases', [])
+                    disease_str = lof_diseases[0] if lof_diseases else "disease"
+                    details_parts.append(f"LOF mechanism established for {disease_str} (ClinGen)")
+                    data_sources.append(f"ClinGen ({clingen_status.get('confidence', 'unknown')} confidence)")
+                
+                # gnomAD constraint as secondary evidence
+                if lof_status['is_lof_intolerant']:
+                    apply_pvs1 = True
+                    details_parts.append(f"pLI={pLI_val:.3f}, LOEUF={LOEUF_val:.3f} (gnomAD)")
+                    data_sources.append(f"gnomAD v4 ({lof_status['confidence']} confidence)")
+                elif lof_status['classification'] == 'LOF_tolerant' and not apply_pvs1:
+                    # Only if ClinGen didn't support LOF
+                    details_parts.append(f"pLI={pLI_val:.3f}, LOEUF={LOEUF_val:.3f} → LOF tolerant (gnomAD)")
+                    data_sources.append(f"gnomAD v4 ({lof_status['confidence']} confidence)")
+                
+                # QUICK WIN #4: ClinGen Dosage Sensitivity - Modulate PVS1 strength
+                hi_score = dosage_status.get('haploinsufficiency_score')
+                pvs1_recommendation = dosage_status.get('pvs1_recommendation', 'insufficient_data')
+                
+                if hi_score is not None:
+                    if hi_score == 3:
+                        # Sufficient evidence: Keep PVS1 Very Strong
+                        result['strength'] = 'Very Strong'
+                        details_parts.append(f"HI Score=3 (Sufficient) - PVS1 Very Strong maintained")
+                    elif hi_score == 2:
+                        # Some evidence: Downgrade to PS1 Strong
+                        result['strength'] = 'Strong'
+                        details_parts.append(f"HI Score=2 (Some) - PVS1 downgraded to PS1 Strong")
+                    elif hi_score == 1:
+                        # Little evidence: Downgrade to PM2 Moderate
+                        result['strength'] = 'Moderate'
+                        details_parts.append(f"HI Score=1 (Little) - PVS1 downgraded to PM2 Moderate")
+                    elif hi_score == 0 or hi_score == 40:
+                        # No/unlikely HI: Consider not applying
+                        apply_pvs1 = False
+                        details_parts.append(f"HI Score={hi_score} (No/Unlikely evidence) - PVS1 not applied")
+                    
+                    data_sources.append(f"ClinGen Dosage (HI={hi_score})")
+                else:
+                    # No dosage data: Keep original PVS1 strength
+                    details_parts.append("HI data unavailable - default PVS1 strength")
+                
+                # Conflict warnings
+                conflict_warning = ""
+                if in_manual_intolerant and not apply_pvs1:
+                    conflict_warning = f" ⚠️ NOTE: Manual list classifies {gene} as LOF intolerant, but API data suggests tolerant"
+                elif in_manual_tolerant and apply_pvs1:
+                    conflict_warning = f" ⚠️ NOTE: Manual list classifies {gene} as LOF tolerant, but API data suggests intolerant"
+                
+                # Special case: ClinGen supports LOF but gnomAD says tolerant (e.g., BRCA1)
+                if clingen_status.get('supports_lof_pathogenicity') and lof_status['classification'] == 'LOF_tolerant':
+                    conflict_warning += f" 📘 CONTEXT: Gene is LOF tolerant in general population but LOF variants cause specific diseases (tumor suppressor, etc.)"
+                
+                # Build result
+                if apply_pvs1:
+                    result['applies'] = True
+                    result['details'] = (
+                        f"Loss-of-function variant ({variant_type or consequence}) in {gene}. "
+                        f"{' | '.join(details_parts)}{conflict_warning}"
+                    )
+                    result['data_source'] = ' + '.join(data_sources)
+                    result['constraint_metrics'] = {
+                        'gnomad_pLI': pLI_val,
+                        'gnomad_LOEUF': LOEUF_val,
+                        'gnomad_classification': lof_status.get('classification'),
+                        'clingen_supports_lof': clingen_status.get('supports_lof_pathogenicity'),
+                        'clingen_mechanism': clingen_status.get('primary_mechanism'),
+                        'clingen_diseases': clingen_status.get('lof_diseases', []),
+                        'clingen_hi_score': hi_score,
+                        'pvs1_recommendation': pvs1_recommendation
+                    }
+                else:
+                    result['applies'] = False
+                    result['details'] = (
+                        f"Loss-of-function variant ({variant_type or consequence}) in {gene}. "
+                        f"{' | '.join(details_parts)} - PVS1 not applicable{conflict_warning}"
+                    )
+                    result['data_source'] = ' + '.join(data_sources) if data_sources else 'API'
+                    result['constraint_metrics'] = {
+                        'gnomad_pLI': pLI_val,
+                        'gnomad_LOEUF': LOEUF_val,
+                        'gnomad_classification': lof_status.get('classification'),
+                        'clingen_supports_lof': clingen_status.get('supports_lof_pathogenicity'),
+                        'clingen_mechanism': clingen_status.get('primary_mechanism'),
+                        'clingen_hi_score': hi_score,
+                        'pvs1_recommendation': pvs1_recommendation
+                    }
             else:
-                # Unknown gene - conservative approach, don't apply PVS1
-                result['applies'] = False
-                result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in gene {gene} with unknown LOF tolerance - manual review required"
+                # Fallback to manual hard-coded list (API unavailable)
+                result = self._check_lof_manual(gene, variant_type, consequence, result)
+                result['details'] += " [gnomAD/ClinGen APIs unavailable - using manual classification]"
         
         # Check for intronic variants with high SpliceAI scores (splice-altering)
         elif variant_type == 'intronic':
@@ -302,11 +424,14 @@ class EvidenceEvaluator:
             
             # If any SpliceAI score is very high (>0.5), consider it splice-altering
             if spliceai_scores and max(spliceai_scores) > 0.5:
-                # Check if gene is LOF intolerant
-                if gene in LOF_INTOLERANT_GENES:
+                # Check LOF intolerance (API or manual)
+                lof_status = self._check_lof_intolerance(gene)
+                
+                if lof_status['is_lof_intolerant']:
                     result['applies'] = True
                     result['strength'] = 'Strong'  # Use PS1 strength for splice-altering variants
                     result['details'] = f"Intronic variant with high SpliceAI score (max: {max(spliceai_scores):.3f}) in LOF intolerant gene {gene}"
+                    result['data_source'] = lof_status['source']
                 else:
                     result['applies'] = False
                     result['details'] = f"Intronic variant with high SpliceAI score (max: {max(spliceai_scores):.3f}) in gene {gene} - LOF tolerance unknown"
@@ -318,6 +443,158 @@ class EvidenceEvaluator:
         
         return result
     
+    def _check_lof_intolerance(self, gene: str) -> Dict[str, Any]:
+        """
+        Check if gene is LOF intolerant using gnomAD API or fallback to manual list.
+        
+        Args:
+            gene: Gene symbol (e.g., 'BRCA1')
+            
+        Returns:
+            Dict with:
+                - is_lof_intolerant (bool or None)
+                - classification (str): 'LOF_intolerant', 'LOF_tolerant', 'uncertain', 'unknown'
+                - source (str): 'gnomAD' or 'manual'
+                - pLI, LOEUF, etc. (if from gnomAD)
+                - confidence (str)
+        """
+        from config.constants import API_SETTINGS
+        
+        # Try API if enabled
+        if API_SETTINGS.get('enabled', True) and hasattr(self, 'api_client'):
+            try:
+                constraint_data = self.api_client.get_gene_constraint(gene)
+                
+                if 'error' not in constraint_data:
+                    return {
+                        'is_lof_intolerant': constraint_data['is_lof_intolerant'],
+                        'classification': constraint_data['classification'],
+                        'source': 'gnomAD',
+                        'confidence': constraint_data['confidence'],
+                        'pLI': constraint_data.get('pLI'),
+                        'LOEUF': constraint_data.get('LOEUF'),
+                        'oe_lof': constraint_data.get('oe_lof')
+                    }
+            except Exception as e:
+                print(f"⚠️  gnomAD API failed for {gene}: {str(e)}, falling back to manual list")
+        
+        # Fallback to manual list
+        return {
+            'is_lof_intolerant': None,
+            'classification': 'unknown',
+            'source': 'manual',
+            'confidence': 'low'
+        }
+    
+    def _check_lof_manual(self, gene: str, variant_type: str, consequence: str, result: Dict) -> Dict:
+        """Check LOF intolerance using hard-coded gene lists (fallback method)."""
+        if gene in LOF_INTOLERANT_GENES:
+            result['applies'] = True
+            result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF intolerant gene {gene} (manual list)"
+            result['data_source'] = 'manual (hard-coded list)'
+        elif gene in LOF_TOLERANT_GENES:
+            result['applies'] = False
+            result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in LOF tolerant gene {gene} - PVS1 not applicable (manual list)"
+            result['data_source'] = 'manual (hard-coded list)'
+        else:
+            # Unknown gene - conservative approach, don't apply PVS1
+            result['applies'] = False
+            result['details'] = f"Loss-of-function variant ({variant_type or consequence}) in gene {gene} with unknown LOF tolerance - manual review required"
+            result['data_source'] = 'unknown (not in manual list, API unavailable)'
+        
+        return result
+    
+    def _check_clingen_validity(self, gene: str, disease: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check if gene has ClinGen gene-disease validity evidence for LOF mechanism.
+        
+        Args:
+            gene: Gene symbol (e.g., 'BRCA1')
+            disease: Optional disease name for filtering
+        
+        Returns:
+            Dict with:
+                - supports_lof_pathogenicity (bool or None)
+                - source (str): 'ClinGen' or 'manual'
+                - confidence (str)
+                - lof_diseases (list): List of diseases with LOF mechanism
+                - primary_mechanism (str): LOF mechanism type if found
+        """
+        from config.constants import API_SETTINGS
+        
+        # Try API if enabled
+        if API_SETTINGS.get('enabled', True) and hasattr(self, 'api_client'):
+            try:
+                clingen_data = self.api_client.get_clingen_gene_validity(gene, disease)
+                
+                if 'error' not in clingen_data:
+                    return {
+                        'supports_lof_pathogenicity': clingen_data.get('supports_lof_pathogenicity'),
+                        'source': 'ClinGen',
+                        'confidence': clingen_data.get('confidence', 'unknown'),
+                        'lof_diseases': clingen_data.get('lof_diseases', []),
+                        'primary_mechanism': clingen_data.get('primary_mechanism'),
+                        'curations': clingen_data.get('curations', [])
+                    }
+            except Exception as e:
+                print(f"⚠️  ClinGen API failed for {gene}: {str(e)}")
+        
+        # Fallback: No ClinGen data available
+        return {
+            'supports_lof_pathogenicity': None,
+            'source': 'manual',
+            'confidence': 'low',
+            'lof_diseases': [],
+            'primary_mechanism': None
+        }
+    
+    def _check_clingen_dosage_sensitivity(self, gene: str) -> Dict[str, Any]:
+        """
+        Check ClinGen Dosage Sensitivity Map for haploinsufficiency evidence.
+        
+        Quick Win #4 implementation: Query ClinGen for HI/TS scores to modulate PVS1 strength.
+        
+        Args:
+            gene: Gene symbol (e.g., 'BRCA1', 'TP53')
+        
+        Returns:
+            Dict with:
+                - haploinsufficiency_score (int or None): 0-3 or 40
+                - triplosensitivity_score (int or None): 0-3 or 40
+                - pvs1_recommendation (str): Strength recommendation
+                - source (str): 'ClinGen Dosage' or 'manual'
+                - confidence (str): Confidence level
+        """
+        from config.constants import API_SETTINGS
+        
+        # Try API if enabled
+        if API_SETTINGS.get('enabled', True) and hasattr(self, 'api_client'):
+            try:
+                dosage_data = self.api_client.get_clingen_dosage_sensitivity(gene)
+                
+                if 'error' not in dosage_data:
+                    return {
+                        'haploinsufficiency_score': dosage_data.get('haploinsufficiency_score'),
+                        'triplosensitivity_score': dosage_data.get('triplosensitivity_score'),
+                        'pvs1_recommendation': dosage_data.get('pvs1_recommendation'),
+                        'source': 'ClinGen Dosage',
+                        'confidence': dosage_data.get('confidence', 'unknown'),
+                        'haploinsufficiency_description': dosage_data.get('haploinsufficiency_description'),
+                        'clingen_gene_url': dosage_data.get('clingen_gene_url')
+                    }
+            except Exception as e:
+                print(f"⚠️  ClinGen Dosage API failed for {gene}: {str(e)}")
+        
+        # Fallback: No dosage data available
+        return {
+            'haploinsufficiency_score': None,
+            'triplosensitivity_score': None,
+            'pvs1_recommendation': 'insufficient_data',
+            'source': 'manual',
+            'confidence': 'none'
+        }
+
+    
     def _evaluate_ps1(self, variant_data) -> Dict[str, Any]:
         """Evaluate PS1 - Same amino acid change as pathogenic variant."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
@@ -326,7 +603,23 @@ class EvidenceEvaluator:
         aa_change = variant_data.basic_info.get('amino_acid_change')
         hgvs_p = variant_data.basic_info.get('hgvs_p')
         
-        # CRITICAL FIX: Check ClinVar data first
+        # **QUICK WIN #3: Query ClinVar for variants at same position**
+        if self.api_client and gene and hgvs_p:
+            try:
+                clinvar_search = self.api_client.search_clinvar_variants_at_position(gene, hgvs_p)
+                
+                if clinvar_search.get('same_aa_pathogenic'):
+                    result['applies'] = True
+                    result['details'] = f"✓ PS1 applies: Same amino acid change {hgvs_p} in {gene} reported as pathogenic in ClinVar"
+                    result['source'] = 'ClinVar E-utilities'
+                    return result
+                else:
+                    result['details'] = f"No pathogenic variants with same amino acid change found in ClinVar for {gene} {hgvs_p}"
+                    return result
+            except Exception as e:
+                print(f"⚠️ ClinVar search failed: {e}")
+        
+        # FALLBACK: Check ClinVar data from variant_data
         clinvar = variant_data.clinvar_data or {}
         
         # Check if same AA change is marked as pathogenic in ClinVar
@@ -806,7 +1099,14 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pm2(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PM2 - Absent from controls."""
+        """
+        Evaluate PM2 - Absent from controls.
+        
+        **ENHANCED: Multi-source population frequency validation**
+        - Primary: gnomAD v4 GraphQL API
+        - Secondary: Manual input (ExAC, 1000 Genomes)
+        - Cross-validation: Multiple population databases
+        """
         result = {
             'applies': False, 
             'strength': 'Moderate', 
@@ -815,45 +1115,129 @@ class EvidenceEvaluator:
             'data_source': 'population_database'
         }
         
-        # Check population frequencies
-        pop_data = variant_data.population_data
-        gnomad_af = pop_data.get('gnomad_af')
+        # MULTI-SOURCE: Collect frequencies from all available sources
+        frequencies = {}
+        data_sources = []
         
-        # CRITICAL FIX: PM2 should NOT apply if frequency is high enough for BA1/BS1
-        # BA1 threshold: >5%, BS1 threshold: >1% (gene-specific)
-        gene = variant_data.basic_info.get('gene', '').upper()
-        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
-        bs1_threshold = gene_thresholds.get('BS1', 0.01)
+        # Source 1: gnomAD v4 API
+        gnomad_af = None
+        if self.api_client and self.api_enabled:
+            try:
+                # Get genomic coordinates if available
+                basic_info = variant_data.basic_info
+                chrom = basic_info.get('chromosome')
+                pos = basic_info.get('position')
+                ref = basic_info.get('ref_allele')
+                alt = basic_info.get('alt_allele')
+                
+                if chrom and pos and ref and alt:
+                    freq_result = self.api_client.get_variant_frequency(
+                        chrom=chrom, pos=pos, ref=ref, alt=alt
+                    )
+                    
+                    if freq_result and 'allele_frequency' in freq_result:
+                        gnomad_af = freq_result.get('allele_frequency')
+                        frequencies['gnomad_v4'] = gnomad_af
+                        data_sources.append('gnomAD v4 API')
+                        
+                        # If variant not found in gnomAD
+                        if 'note' in freq_result and 'not found' in freq_result['note']:
+                            frequencies['gnomad_v4'] = 0.0
+            except Exception as e:
+                print(f"⚠️  gnomAD API error in PM2: {str(e)}")
         
-        # Check if frequency is too high for PM2
-        if gnomad_af is not None and gnomad_af >= bs1_threshold:
-            # Frequency too high - variant is NOT absent from controls
-            result['applies'] = False
-            result['details'] = f"Variant present in population at significant frequency (gnomAD AF: {gnomad_af})"
-            result['confidence'] = 'high'
-            return result
+        # Source 2: Manual population_data (ExAC, 1000 Genomes, etc.)
+        pop_data = variant_data.population_data or {}
         
-        # Check if absent from controls flag is explicitly set
-        if pop_data.get('absent_from_controls') is True:
-            result['applies'] = True
-            result['details'] = "Variant absent from population databases (PM2)"
-            return result
-        
-        # PM2 applies if variant is absent or extremely rare
         if gnomad_af is None:
-            # No frequency data - could be absent or just not in database
-            result['applies'] = False
-            result['details'] = "No population frequency data available"
-            result['confidence'] = 'low'
-        elif gnomad_af == 0.0:
-            result['applies'] = True
-            result['details'] = "Variant absent from population databases (gnomAD AF: 0.0) (PM2)"
-        elif gnomad_af < 0.0001:  # Extremely rare (< 0.01%)
-            result['applies'] = True
-            result['details'] = f"Variant extremely rare in population (gnomAD AF: {gnomad_af}) (PM2)"
+            # Fallback to manual gnomAD input
+            gnomad_af = pop_data.get('gnomad_af')
+            if gnomad_af is not None:
+                frequencies['gnomad_manual'] = gnomad_af
+                data_sources.append('gnomAD (manual)')
+        
+        # Additional population databases from manual input
+        if pop_data.get('exac_af') is not None:
+            frequencies['exac'] = pop_data.get('exac_af')
+            data_sources.append('ExAC')
+        
+        if pop_data.get('1000g_af') is not None:
+            frequencies['1000g'] = pop_data.get('1000g_af')
+            data_sources.append('1000 Genomes')
+        
+        if pop_data.get('topmed_af') is not None:
+            frequencies['topmed'] = pop_data.get('topmed_af')
+            data_sources.append('TOPMed')
+        
+        # MULTI-SOURCE VALIDATION: Consensus from multiple databases
+        if len(frequencies) > 0:
+            max_af = max(frequencies.values())
+            min_af = min(frequencies.values())
+            avg_af = sum(frequencies.values()) / len(frequencies)
+            
+            # Check for discrepancies between databases
+            discrepancy_threshold = 0.01  # 1% difference
+            has_discrepancy = (max_af - min_af) > discrepancy_threshold if len(frequencies) > 1 else False
+            
+            # CRITICAL CHECK: PM2 should NOT apply if frequency is high enough for BA1/BS1
+            gene = variant_data.basic_info.get('gene', '').upper()
+            gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+            bs1_threshold = gene_thresholds.get('BS1', 0.01)
+            
+            # Use maximum frequency for safety (conservative approach)
+            if max_af >= bs1_threshold:
+                result['applies'] = False
+                result['details'] = (
+                    f"Variant present in population at significant frequency "
+                    f"(Max AF: {max_af:.4f} from {len(frequencies)} sources) "
+                    f"[{', '.join(data_sources)}]"
+                )
+                result['confidence'] = 'high'
+                result['population_frequencies'] = frequencies
+                return result
+            
+            # PM2 applies if variant is absent or extremely rare across all databases
+            if max_af == 0.0:
+                result['applies'] = True
+                result['details'] = (
+                    f"Variant absent from {len(frequencies)} population database(s) "
+                    f"(PM2) [{', '.join(data_sources)}]"
+                )
+                result['confidence'] = 'high' if len(frequencies) >= 2 else 'medium'
+            elif max_af < 0.0001:  # Extremely rare (< 0.01%)
+                result['applies'] = True
+                result['details'] = (
+                    f"Variant extremely rare in population "
+                    f"(Max AF: {max_af:.6f} from {len(frequencies)} sources) "
+                    f"(PM2) [{', '.join(data_sources)}]"
+                )
+                result['confidence'] = 'high' if len(frequencies) >= 2 else 'medium'
+                
+                # Warn about discrepancies
+                if has_discrepancy:
+                    result['details'] += f" ⚠️ Note: Frequency varies across databases (range: {min_af:.6f}-{max_af:.6f})"
+            else:
+                result['applies'] = False
+                result['details'] = (
+                    f"Variant present in population databases "
+                    f"(Max AF: {max_af:.6f}) [{', '.join(data_sources)}]"
+                )
+                result['confidence'] = 'medium'
+            
+            result['population_frequencies'] = frequencies
+            result['data_source'] = ', '.join(data_sources)
         else:
-            result['confidence'] = 'medium'
-            result['details'] = f"Variant present in population databases (gnomAD AF: {gnomad_af})"
+            # No frequency data available from any source
+            # Check if absent from controls flag is explicitly set
+            if pop_data.get('absent_from_controls') is True:
+                result['applies'] = True
+                result['details'] = "Variant reported as absent from population databases (PM2) [user-provided]"
+                result['confidence'] = 'low'
+            else:
+                result['applies'] = False
+                result['details'] = "No population frequency data available from any source"
+                result['confidence'] = 'low'
+                result['data_source'] = 'none'
         
         return result
     
@@ -955,7 +1339,25 @@ class EvidenceEvaluator:
         aa_change = variant_data.basic_info.get('amino_acid_change')
         hgvs_p = variant_data.basic_info.get('hgvs_p')
         
-        # CRITICAL FIX: Check ClinVar data for same residue different AA
+        # **QUICK WIN #3: Query ClinVar for different variants at same position**
+        if self.api_client and gene and hgvs_p:
+            try:
+                clinvar_search = self.api_client.search_clinvar_variants_at_position(gene, hgvs_p)
+                
+                different_aa_pathogenic = clinvar_search.get('different_aa_pathogenic', [])
+                if different_aa_pathogenic:
+                    result['applies'] = True
+                    pathogenic_changes = [v['protein_change'] for v in different_aa_pathogenic[:3]]  # Show first 3
+                    result['details'] = f"✓ PM5 applies: Different pathogenic missense at same position: {', '.join(pathogenic_changes)}"
+                    result['source'] = 'ClinVar E-utilities'
+                    return result
+                else:
+                    result['details'] = f"No different pathogenic variants found at same position for {gene} {hgvs_p}"
+                    return result
+            except Exception as e:
+                print(f"⚠️ ClinVar search failed: {e}")
+        
+        # FALLBACK: Check ClinVar data for same residue different AA
         clinvar = variant_data.clinvar_data or {}
         
         # Check if same residue has different pathogenic AA change
@@ -1210,7 +1612,36 @@ class EvidenceEvaluator:
                 result['details'] = f"Not applying PP2: variant frequency too high ({gnomad_af:.4f}) for pathogenic missense"
                 return result
             
-            # Define genes known to have low benign missense variation
+            # **QUICK WIN #1: Use gnomAD missense constraint data**
+            # Try to get gene constraint data from API
+            constraint_data = None
+            if self.api_client and gene:
+                try:
+                    constraint_data = self.api_client.get_gene_constraint(gene)
+                except Exception as e:
+                    print(f"⚠️ Could not fetch constraint data: {e}")
+            
+            # Check missense constraint metrics
+            if constraint_data:
+                mis_z = constraint_data.get('mis_z')
+                oe_mis_upper = constraint_data.get('oe_mis_upper')
+                is_mis_constrained = constraint_data.get('is_mis_constrained', False)
+                mis_classification = constraint_data.get('mis_classification', 'uncertain')
+                
+                # Apply PP2 if gene shows significant missense constraint
+                if is_mis_constrained and mis_classification == 'missense_constrained':
+                    result['applies'] = True
+                    if mis_z is not None:
+                        result['details'] = f"✓ PP2 applies: {gene} shows missense constraint (mis_z={mis_z:.2f} > 3.09)"
+                    elif oe_mis_upper is not None:
+                        result['details'] = f"✓ PP2 applies: {gene} shows missense constraint (oe_mis_upper={oe_mis_upper:.3f} < 0.6)"
+                    result['source'] = 'gnomAD missense constraint'
+                    return result
+                elif mis_classification == 'missense_tolerant':
+                    result['details'] = f"Gene {gene} is missense tolerant (oe_mis={constraint_data.get('oe_mis', 'N/A'):.3f}), PP2 does not apply"
+                    return result
+            
+            # Fallback: Define genes known to have low benign missense variation
             low_benign_genes = [
                 'BRCA1', 'BRCA2', 'TP53', 'ATM', 'CHEK2', 'PALB2',
                 'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM',
@@ -1230,7 +1661,7 @@ class EvidenceEvaluator:
                     # Interactive mode: Ask user
                     result = self._evaluate_pp2_interactive(variant_data, gene, variant_name)
             else:
-                result['details'] = f"Gene {gene} not in low-benign-missense gene list"
+                result['details'] = f"Gene {gene} not in low-benign-missense gene list (and no constraint data available)"
                 result['manual_review'] = True
         else:
             result['details'] = "Not a missense variant"
@@ -1357,7 +1788,7 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP5 - Reputable source with stricter validation requirements."""
+        """Evaluate PP5 - Reputable source with ClinVar API integration."""
         from config.constants import REPUTABLE_SOURCE_REQUIREMENTS
         from datetime import datetime
         
@@ -1369,7 +1800,84 @@ class EvidenceEvaluator:
             'data_source': 'none'
         }
         
-        # Check if ClinVar data is available
+        # Try API-based ClinVar lookup first
+        if self.api_client and self.api_enabled:
+            try:
+                gene = variant_data.gene
+                hgvs = variant_data.hgvs_c
+                
+                clinvar_result = self.api_client.get_clinvar_classification(
+                    gene=gene, 
+                    hgvs=hgvs
+                )
+                
+                if clinvar_result and 'classification' in clinvar_result:
+                    classification = clinvar_result.get('classification', '').lower()
+                    review_status = clinvar_result.get('review_status', '').lower()
+                    star_rating = clinvar_result.get('star_rating', 0)
+                    last_evaluated = clinvar_result.get('date_last_evaluated', '')
+                    
+                    # Check for non-pathogenicity classifications (drug response, risk factor, etc.)
+                    non_pathogenicity_terms = ['drug response', 'risk factor', 'protective', 
+                                              'affects', 'association', 'confers sensitivity',
+                                              'other', 'not provided']
+                    is_non_pathogenicity = any(term in classification for term in non_pathogenicity_terms)
+                    
+                    if is_non_pathogenicity:
+                        result['details'] = (
+                            f"ClinVar classification '{classification}' is not a pathogenicity assessment. "
+                            f"This is a {classification} annotation and does not apply to PP5/BP6 criteria."
+                        )
+                        result['data_source'] = 'clinvar_non_pathogenicity'
+                        return result
+                    
+                    # Check if classification is recent (within 5 years)
+                    classification_recent = True
+                    if last_evaluated and last_evaluated != 'Unknown':
+                        try:
+                            # Parse date (format: YYYY/MM/DD HH:MM or YYYY/MM/DD)
+                            date_str = last_evaluated.split(' ')[0]  # Remove time if present
+                            date_parts = date_str.split('/')
+                            if len(date_parts) >= 3:
+                                year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                                eval_date = datetime(year, month, day)
+                                age_years = (datetime.now() - eval_date).days / 365.25
+                                classification_recent = age_years <= REPUTABLE_SOURCE_REQUIREMENTS['max_age_years']
+                        except Exception as e:
+                            classification_recent = False
+                    
+                    # Check if meets reputable source requirements
+                    meets_requirements = (
+                        star_rating >= REPUTABLE_SOURCE_REQUIREMENTS['min_stars'] and
+                        classification_recent
+                    )
+                    
+                    if 'pathogenic' in classification and 'benign' not in classification:
+                        if meets_requirements:
+                            result['applies'] = True
+                            result['confidence'] = 'high' if star_rating >= 3 else 'medium'
+                            result['data_source'] = 'clinvar_api'
+                            result['details'] = (
+                                f"ClinVar reports variant as {classification} "
+                                f"({star_rating}★, {review_status}) (PP5)"
+                            )
+                        else:
+                            result['confidence'] = 'low'
+                            result['data_source'] = 'clinvar_insufficient_review'
+                            result['details'] = (
+                                f"ClinVar reports {classification} but does not meet PP5 criteria "
+                                f"(stars: {star_rating}, recent: {classification_recent})"
+                            )
+                    elif 'benign' in classification:
+                        result['details'] = f"ClinVar reports variant as {classification} - see BP6"
+                    else:
+                        result['details'] = f"ClinVar classification: {classification}"
+                    
+                    return result
+            except Exception as e:
+                print(f"⚠️  ClinVar API error in PP5: {str(e)}")
+        
+        # Fallback to manual clinvar_data attribute if API unavailable
         clinvar_data = getattr(variant_data, 'clinvar_data', None)
         
         if clinvar_data and clinvar_data.get('clinical_significance'):
@@ -1451,12 +1959,38 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_ba1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BA1 - High allele frequency."""
+        """Evaluate BA1 - High allele frequency with gnomAD API."""
         result = {'applies': False, 'strength': 'Stand-alone', 'details': ''}
         
-        # Check population frequencies
-        pop_data = variant_data.population_data
-        gnomad_af = pop_data.get('gnomad_af')
+        # Try API-based gnomAD frequency lookup first
+        gnomad_af = None
+        data_source = 'manual'
+        
+        if self.api_client and self.api_enabled:
+            try:
+                # Get genomic coordinates if available
+                basic_info = variant_data.basic_info
+                chrom = basic_info.get('chromosome')
+                pos = basic_info.get('position')
+                ref = basic_info.get('ref_allele')
+                alt = basic_info.get('alt_allele')
+                
+                if chrom and pos and ref and alt:
+                    freq_result = self.api_client.get_variant_frequency(
+                        chrom=chrom, pos=pos, ref=ref, alt=alt
+                    )
+                    
+                    if freq_result and 'allele_frequency' in freq_result:
+                        gnomad_af = freq_result.get('allele_frequency')
+                        data_source = 'gnomad_api'
+            except Exception as e:
+                print(f"⚠️  gnomAD API error in BA1: {str(e)}")
+        
+        # Fallback to manual population_data
+        if gnomad_af is None:
+            pop_data = variant_data.population_data
+            gnomad_af = pop_data.get('gnomad_af')
+        
         gene = variant_data.basic_info.get('gene', '').upper()
         
         # Get gene-specific threshold or use default
@@ -1466,19 +2000,48 @@ class EvidenceEvaluator:
         # BA1 applies if variant is common in population
         if gnomad_af is not None and gnomad_af > ba1_threshold:
             result['applies'] = True
-            result['details'] = f"Variant common in population (gnomAD AF: {gnomad_af}, threshold: {ba1_threshold})"
+            result['details'] = f"Variant common in population (gnomAD AF: {gnomad_af:.4f}, threshold: {ba1_threshold}) [{data_source}]"
         else:
-            result['details'] = f"Variant not common in population (gnomAD AF: {gnomad_af or 'N/A'}, threshold: {ba1_threshold})"
+            af_display = f"{gnomad_af:.6f}" if gnomad_af is not None else 'N/A'
+            result['details'] = f"Variant not common in population (gnomAD AF: {af_display}, threshold: {ba1_threshold}) [{data_source}]"
         
         return result
     
     def _evaluate_bs1(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BS1 - Allele frequency higher than expected for disorder."""
+        """Evaluate BS1 - Allele frequency higher than expected for disorder with gnomAD API."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
         
-        # Check population frequencies
-        pop_data = variant_data.population_data
-        gnomad_af = pop_data.get('gnomad_af')
+        # Try API-based gnomAD frequency lookup first
+        gnomad_af = None
+        data_source = 'manual'
+        
+        if self.api_client and self.api_enabled:
+            try:
+                # Get genomic coordinates if available
+                basic_info = variant_data.basic_info
+                chrom = basic_info.get('chromosome')
+                pos = basic_info.get('position')
+                ref = basic_info.get('ref_allele')
+                alt = basic_info.get('alt_allele')
+                
+                if chrom and pos and ref and alt:
+                    freq_result = self.api_client.get_variant_frequency(
+                        chrom=chrom, pos=pos, ref=ref, alt=alt
+                    )
+                    
+                    if freq_result and 'allele_frequency' in freq_result:
+                        gnomad_af = freq_result.get('allele_frequency')
+                        data_source = 'gnomad_api'
+            except Exception as e:
+                print(f"⚠️  gnomAD API error in BS1: {str(e)}")
+        
+        # Fallback to manual population_data
+        if gnomad_af is None:
+            pop_data = variant_data.population_data
+            gnomad_af = pop_data.get('gnomad_af')
+        else:
+            pop_data = variant_data.population_data
+        
         gene = variant_data.basic_info.get('gene', '').upper()
         
         # CRITICAL FIX: Check if expected_max_af is provided (from test data or disease prevalence)
@@ -1500,6 +2063,9 @@ class EvidenceEvaluator:
             gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
             bs1_threshold = gene_thresholds.get('BS1', 0.01)
         
+        # Get gene thresholds for BA1 check
+        gene_thresholds = GENE_SPECIFIC_THRESHOLDS.get(gene, GENE_SPECIFIC_THRESHOLDS['default'])
+        
         # BS1 applies if variant frequency is higher than expected for disorder
         # Must be significantly higher (not just slightly above)
         if gnomad_af is not None:
@@ -1509,20 +2075,36 @@ class EvidenceEvaluator:
             if gnomad_af > ba1_threshold:
                 # BA1 takes precedence - don't apply BS1
                 result['applies'] = False
-                result['details'] = f"Variant frequency exceeds BA1 threshold (gnomAD AF: {gnomad_af})"
+                result['details'] = f"Variant frequency exceeds BA1 threshold (gnomAD AF: {gnomad_af:.4f}) [{data_source}]"
             elif gnomad_af > bs1_threshold:
                 result['applies'] = True
-                result['details'] = f"Variant frequency higher than expected for disorder (gnomAD AF: {gnomad_af}, expected max: {bs1_threshold})"
+                result['details'] = f"Variant frequency higher than expected for disorder (gnomAD AF: {gnomad_af:.4f}, expected max: {bs1_threshold}) [{data_source}]"
             else:
-                result['details'] = f"Variant frequency not higher than expected (gnomAD AF: {gnomad_af}, expected max: {bs1_threshold})"
+                af_display = f"{gnomad_af:.6f}" if gnomad_af > 0 else "0.0"
+                result['details'] = f"Variant frequency not higher than expected (gnomAD AF: {af_display}, expected max: {bs1_threshold}) [{data_source}]"
         else:
-            result['details'] = f"No population frequency data available"
+            result['details'] = f"No population frequency data available [{data_source}]"
         
         return result
     
     def _evaluate_bs2(self, variant_data) -> Dict[str, Any]:
         """Evaluate BS2 - Observed in a healthy adult individual for a recessive disorder."""
         result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        
+        # **QUICK WIN #2: Check gnomAD homozygote counts for recessive disorders**
+        population_data = variant_data.population_data or {}
+        ac_hom = population_data.get('ac_hom')
+        gnomad_af = population_data.get('gnomad_af')
+        
+        # If variant observed as homozygous in gnomAD, apply BS2 for recessive disorders
+        # Rationale: Healthy homozygotes indicate variant is unlikely causative
+        if ac_hom is not None and ac_hom > 0:
+            result['applies'] = True
+            result['details'] = f"✓ BS2 applies: Variant observed in {ac_hom} healthy homozygotes in gnomAD (recessive disorder)"
+            result['source'] = 'gnomAD homozygote count'
+            result['manual_review'] = True
+            result['guidance'] = "BS2 applies for recessive disorders. For dominant, consider if homozygous state is more severe."
+            return result
         
         # CRITICAL FIX: Check genetic_data for observed_in_healthy
         genetic_data = variant_data.genetic_data or {}
@@ -1534,7 +2116,7 @@ class EvidenceEvaluator:
         
         # BS2 requires: healthy individual + appropriate zygosity + age considerations
         if not observed_in_healthy:
-            result['details'] = "Variant not observed in healthy individuals"
+            result['details'] = "Variant not observed in healthy individuals or homozygotes"
             return result
         
         # Check if observed at appropriate age (must be past expected disease onset)
@@ -1696,7 +2278,34 @@ class EvidenceEvaluator:
         gene = variant_data.basic_info.get('gene')
         
         if variant_type == 'missense':
-            # Define genes where primarily truncating variants cause disease
+            # **QUICK WIN #1: Use gnomAD missense constraint data**
+            # Try to get gene constraint data from API
+            constraint_data = None
+            if self.api_client and gene:
+                try:
+                    constraint_data = self.api_client.get_gene_constraint(gene)
+                except Exception as e:
+                    print(f"⚠️ Could not fetch constraint data: {e}")
+            
+            # Check if gene is missense tolerant (suggests LOF is mechanism)
+            if constraint_data:
+                oe_mis = constraint_data.get('oe_mis')
+                mis_classification = constraint_data.get('mis_classification', 'uncertain')
+                is_lof_intolerant = constraint_data.get('is_lof_intolerant', False)
+                
+                # Apply BP1 if:
+                # 1. Gene is missense tolerant (oe_mis > 1.0)
+                # 2. Gene is LOF intolerant (suggests LOF is disease mechanism)
+                if mis_classification == 'missense_tolerant' and is_lof_intolerant:
+                    result['applies'] = True
+                    result['details'] = f"✓ BP1 applies: {gene} is missense tolerant (oe_mis={oe_mis:.3f}) and LOF intolerant (truncating is mechanism)"
+                    result['source'] = 'gnomAD constraint'
+                    return result
+                elif mis_classification == 'missense_constrained':
+                    result['details'] = f"Gene {gene} is missense constrained, BP1 does not apply"
+                    return result
+            
+            # Fallback: Define genes where primarily truncating variants cause disease
             # NOTE: This list is conservative - only includes genes where truncating is PRIMARY mechanism
             truncating_mechanism_genes = [
                 'DMD',  # Duchenne muscular dystrophy
@@ -1717,7 +2326,7 @@ class EvidenceEvaluator:
                 result['applies'] = True
                 result['details'] = f"Missense variant in {gene} (gene where truncating variants primarily cause disease) (BP1)"
             else:
-                result['details'] = f"Gene {gene} not recognized as primarily truncating mechanism"
+                result['details'] = f"Gene {gene} not recognized as primarily truncating mechanism (and no constraint data available)"
                 result['manual_review'] = True
                 result['search_recommendations'] = [
                     f"Review ClinVar pathogenic variants for {gene}",
@@ -2030,7 +2639,7 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bp6(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP6 - Reputable source reports variant as benign."""
+        """Evaluate BP6 - Reputable source reports variant as benign with ClinVar API."""
         from config.constants import REPUTABLE_SOURCE_REQUIREMENTS
         from datetime import datetime
         
@@ -2042,19 +2651,84 @@ class EvidenceEvaluator:
             'data_source': 'none'
         }
         
-        # CRITICAL FIX: Check clinvar_data for benign classification
-        clinvar_data = variant_data.clinvar_data or {}
-        classification = clinvar_data.get('classification', '').lower()
+        # Try API-based ClinVar lookup first
+        if self.api_client and self.api_enabled:
+            try:
+                gene = variant_data.gene
+                hgvs = variant_data.hgvs_c
+                
+                clinvar_result = self.api_client.get_clinvar_classification(
+                    gene=gene, 
+                    hgvs=hgvs
+                )
+                
+                if clinvar_result and 'classification' in clinvar_result:
+                    classification = clinvar_result.get('classification', '').lower()
+                    review_status = clinvar_result.get('review_status', '').lower()
+                    star_rating = clinvar_result.get('star_rating', 0)
+                    last_evaluated = clinvar_result.get('date_last_evaluated', '')
+                    
+                    # Check for non-pathogenicity classifications (drug response, risk factor, etc.)
+                    non_pathogenicity_terms = ['drug response', 'risk factor', 'protective', 
+                                              'affects', 'association', 'confers sensitivity',
+                                              'other', 'not provided']
+                    is_non_pathogenicity = any(term in classification for term in non_pathogenicity_terms)
+                    
+                    if is_non_pathogenicity:
+                        result['details'] = (
+                            f"ClinVar classification '{classification}' is not a pathogenicity assessment. "
+                            f"This is a {classification} annotation and does not apply to PP5/BP6 criteria."
+                        )
+                        result['data_source'] = 'clinvar_non_pathogenicity'
+                        return result
+                    
+                    # Check if classification is recent (within 5 years)
+                    classification_recent = True
+                    if last_evaluated and last_evaluated != 'Unknown':
+                        try:
+                            # Parse date (format: YYYY/MM/DD HH:MM or YYYY/MM/DD)
+                            date_str = last_evaluated.split(' ')[0]  # Remove time if present
+                            date_parts = date_str.split('/')
+                            if len(date_parts) >= 3:
+                                year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+                                eval_date = datetime(year, month, day)
+                                age_years = (datetime.now() - eval_date).days / 365.25
+                                classification_recent = age_years <= REPUTABLE_SOURCE_REQUIREMENTS['max_age_years']
+                        except Exception as e:
+                            classification_recent = False
+                    
+                    # Check if meets reputable source requirements
+                    meets_requirements = (
+                        star_rating >= REPUTABLE_SOURCE_REQUIREMENTS['min_stars'] and
+                        classification_recent
+                    )
+                    
+                    if 'benign' in classification and 'pathogenic' not in classification:
+                        if meets_requirements:
+                            result['applies'] = True
+                            result['confidence'] = 'high' if star_rating >= 3 else 'medium'
+                            result['data_source'] = 'clinvar_api'
+                            result['details'] = (
+                                f"ClinVar reports variant as {classification} "
+                                f"({star_rating}★, {review_status}) (BP6)"
+                            )
+                        else:
+                            result['confidence'] = 'low'
+                            result['data_source'] = 'clinvar_insufficient_review'
+                            result['details'] = (
+                                f"ClinVar reports {classification} but does not meet BP6 criteria "
+                                f"(stars: {star_rating}, recent: {classification_recent})"
+                            )
+                    elif 'pathogenic' in classification:
+                        result['details'] = f"ClinVar reports variant as {classification} - see PP5"
+                    else:
+                        result['details'] = f"ClinVar classification: {classification}"
+                    
+                    return result
+            except Exception as e:
+                print(f"⚠️  ClinVar API error in BP6: {str(e)}")
         
-        # Quick check: if explicitly marked as Benign/Likely benign
-        if classification in ['benign', 'likely benign', 'likely_benign']:
-            result['applies'] = True
-            result['data_source'] = 'clinvar'
-            result['confidence'] = 'high'
-            result['details'] = f"Reputable source reports variant as {classification.title()} (BP6)"
-            return result
-        
-        # Fall back to detailed ClinVar validation
+        # Fallback to manual clinvar_data attribute if API unavailable
         clinvar_data = getattr(variant_data, 'clinvar_data', None)
         
         if clinvar_data and clinvar_data.get('clinical_significance'):

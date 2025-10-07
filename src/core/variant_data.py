@@ -44,6 +44,9 @@ class VariantData:
     # Functional studies and segregation data
     functional_data: Dict[str, Any] = field(default_factory=dict)
     
+    # Patient phenotype information
+    patient_phenotypes: Optional[str] = None
+    
     # External database information
     clinvar_data: Dict[str, Any] = field(default_factory=dict)
     

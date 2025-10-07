@@ -54,6 +54,9 @@ show_hotspot_api.py
 README.md
 CHANGELOG.md
 RELEASE_NOTES_*.md
+CLEANUP_PLAN_*.md
+GIT_PUSH_STRATEGY.md
+commit_message.txt
 
 # Test files - specific patterns
 test_interactive.py
