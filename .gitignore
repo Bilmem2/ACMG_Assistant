@@ -66,6 +66,7 @@ api_cache/
 
 # Legacy cache files
 api_cache.json
+src/api_cache.json
 domain_api_cache.json
 *.cache.json
 *.cache.sqlite
@@ -76,6 +77,8 @@ domain_api_cache.json
 # =============================================================================
 logs/
 *.log
+api_errors.log
+src/api_errors.log
 tmp/
 .tmp/
 *.tmp
