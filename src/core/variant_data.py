@@ -1,25 +1,45 @@
-
 """
 Variant Data Structure
 =====================
 
 This module defines the VariantData class that holds all information
 about a genetic variant being classified.
+
+CANONICAL IMPLEMENTATION: This is the primary VariantData implementation.
+
+NOTE: A legacy VariantData class also exists in core/evidence_evaluator.py.
+TODO: Migrate all usages to this dataclass implementation and remove the
+      legacy class from evidence_evaluator.py in a future refactor.
+
+Changes in this documentation pass (Dec 2024):
+- Added module-level documentation clarifying canonical status
+- Added type hints to all public methods
+- Improved docstrings with Args/Returns sections
+
+Changes (Jan 2025):
+- Added typed predictor_scores and population_stats fields for multi-source
+  API data flow (PredictorScore and PopulationStats dataclasses)
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from dataclasses import dataclass, field
 import json
+
+# Import typed data structures (avoiding circular imports)
+if TYPE_CHECKING:
+    from config.predictors import PredictorScore, PopulationStats
 
 
 @dataclass
 class VariantData:
     @property
-    def gene(self):
+    def gene(self) -> Optional[str]:
+        """Get gene symbol from basic_info."""
         return self.basic_info.get('gene', None)
 
     @property
-    def hgvs_c(self):
+    def hgvs_c(self) -> Optional[str]:
+        """Get HGVS cDNA notation from basic_info."""
         return self.basic_info.get('hgvs_c', None)
     """
     Comprehensive data structure for genetic variant information.
@@ -44,8 +64,9 @@ class VariantData:
     # Functional studies and segregation data
     functional_data: Dict[str, Any] = field(default_factory=dict)
     
-    # Patient phenotype information
-    patient_phenotypes: Optional[str] = None
+    # Patient phenotype information for PP4/BP5 evaluation
+    # Can be: List of HPO terms (HP:0001250), free-text phenotypes, or None
+    patient_phenotypes: Optional[List[str]] = None
     
     # External database information
     clinvar_data: Dict[str, Any] = field(default_factory=dict)
@@ -55,6 +76,21 @@ class VariantData:
     
     # Metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # ==========================================================================
+    # Typed Multi-Source API Data (New Jan 2025)
+    # ==========================================================================
+    # These fields hold pre-fetched data from external APIs using typed
+    # dataclasses. They enable the "pure interpreter" pattern where evaluators
+    # only interpret data without making API calls themselves.
+    
+    # Typed predictor scores from multi-source APIs (PredictorScore objects)
+    # Keys are predictor names: 'revel', 'cadd_phred', 'alphamissense', etc.
+    predictor_scores: Optional[Dict[str, Any]] = None
+    
+    # Typed population statistics from multi-source APIs (PopulationStats objects)
+    # Keys are population names: 'gnomad_v4', 'exac', 'topmed', etc.
+    population_stats: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         """Initialize metadata after object creation."""
@@ -206,7 +242,7 @@ class VariantData:
         Returns:
             Dict[str, Any]: Dictionary representation
         """
-        return {
+        result = {
             'basic_info': self.basic_info,
             'population_data': self.population_data,
             'insilico_data': self.insilico_data,
@@ -216,6 +252,31 @@ class VariantData:
             'annotations': self.annotations,
             'metadata': self.metadata
         }
+        
+        # Include typed API data if present (serialize to dicts)
+        if self.predictor_scores:
+            result['predictor_scores'] = {
+                name: (
+                    {'predictor': score.predictor, 'value': score.value, 
+                     'source': score.source, 'version': score.version,
+                     'is_inverted': score.is_inverted}
+                    if hasattr(score, 'predictor') else score
+                )
+                for name, score in self.predictor_scores.items()
+            }
+        
+        if self.population_stats:
+            result['population_stats'] = {
+                name: (
+                    {'population': stats.population, 'af': stats.af,
+                     'an': stats.an, 'ac': stats.ac, 'source': stats.source,
+                     'version': stats.version}
+                    if hasattr(stats, 'population') else stats
+                )
+                for name, stats in self.population_stats.items()
+            }
+        
+        return result
     
     def to_json(self, indent: int = 2) -> str:
         """
@@ -240,7 +301,7 @@ class VariantData:
         Returns:
             VariantData: New instance
         """
-        return cls(
+        instance = cls(
             basic_info=data.get('basic_info', {}),
             population_data=data.get('population_data', {}),
             insilico_data=data.get('insilico_data', {}),
@@ -250,6 +311,14 @@ class VariantData:
             annotations=data.get('annotations', {}),
             metadata=data.get('metadata', {})
         )
+        
+        # Restore typed API data if present
+        if 'predictor_scores' in data and data['predictor_scores']:
+            instance.predictor_scores = data['predictor_scores']
+        if 'population_stats' in data and data['population_stats']:
+            instance.population_stats = data['population_stats']
+        
+        return instance
     
     @classmethod
     def from_json(cls, json_str: str) -> 'VariantData':
@@ -323,3 +392,95 @@ class VariantData:
             return self.metadata.get(field, default)
         else:
             return default
+    
+    # ==========================================================================
+    # Multi-Source API Data Helpers (New Jan 2025)
+    # ==========================================================================
+    
+    def has_predictor_scores(self) -> bool:
+        """Check if typed predictor scores are available."""
+        return bool(self.predictor_scores)
+    
+    def get_predictor_score(self, predictor: str) -> Optional[Any]:
+        """
+        Get a typed predictor score by name.
+        
+        Args:
+            predictor: Predictor name (e.g., 'revel', 'cadd_phred')
+            
+        Returns:
+            PredictorScore object or None if not available
+        """
+        if not self.predictor_scores:
+            return None
+        return self.predictor_scores.get(predictor)
+    
+    def get_available_predictors(self) -> List[str]:
+        """Get list of predictors with valid scores."""
+        if not self.predictor_scores:
+            return []
+        return [
+            name for name, score in self.predictor_scores.items()
+            if score is not None and (
+                hasattr(score, 'value') and score.value is not None
+                or isinstance(score, (int, float))
+            )
+        ]
+    
+    def has_population_stats(self) -> bool:
+        """Check if typed population statistics are available."""
+        return bool(self.population_stats)
+    
+    def get_population_stat(self, population: str) -> Optional[Any]:
+        """
+        Get population statistics by name.
+        
+        Args:
+            population: Population name (e.g., 'gnomad_v4', 'exac')
+            
+        Returns:
+            PopulationStats object or None if not available
+        """
+        if not self.population_stats:
+            return None
+        return self.population_stats.get(population)
+    
+    def get_max_population_af(self) -> Optional[float]:
+        """
+        Get maximum allele frequency across all population sources.
+        
+        Returns:
+            Maximum AF or None if no population data
+        """
+        if not self.population_stats:
+            return None
+        
+        afs = []
+        for stats in self.population_stats.values():
+            if hasattr(stats, 'af') and stats.af is not None:
+                afs.append(stats.af)
+            elif isinstance(stats, dict) and stats.get('af') is not None:
+                afs.append(stats['af'])
+        
+        return max(afs) if afs else None
+    
+    def is_absent_from_populations(self) -> bool:
+        """
+        Check if variant is absent from all population databases.
+        
+        Returns:
+            True if absent from all populations or no data available
+        """
+        if not self.population_stats:
+            return True
+        
+        for stats in self.population_stats.values():
+            if hasattr(stats, 'is_absent'):
+                if not stats.is_absent():
+                    return False
+            elif isinstance(stats, dict):
+                af = stats.get('af')
+                if af is not None and af > 0:
+                    return False
+        
+        return True

@@ -1,0 +1,311 @@
+{
+    "_comment": "Local gene-phenotype associations for offline PP4/BP5 evaluation. This is an educational approximation - not a production-grade HPO semantic engine. HPO IDs from https://hpo.jax.org/",
+    "_version": "1.0.0",
+    "_last_updated": "2025-12-03",
+    
+    "BRCA1": {
+        "hpo_terms": [
+            "HP:0003002",
+            "HP:0100013",
+            "HP:0010619",
+            "HP:0000137",
+            "HP:0030075"
+        ],
+        "phenotype_names": [
+            "Breast carcinoma",
+            "Neoplasm of the breast",
+            "Fibroadenoma of the breast",
+            "Ovarian neoplasm",
+            "Ovarian carcinoma"
+        ],
+        "inheritance": "AD",
+        "disease": "Hereditary Breast and Ovarian Cancer Syndrome"
+    },
+    
+    "BRCA2": {
+        "hpo_terms": [
+            "HP:0003002",
+            "HP:0100013",
+            "HP:0000137",
+            "HP:0006725",
+            "HP:0012114"
+        ],
+        "phenotype_names": [
+            "Breast carcinoma",
+            "Neoplasm of the breast",
+            "Ovarian neoplasm",
+            "Pancreatic adenocarcinoma",
+            "Male infertility"
+        ],
+        "inheritance": "AD",
+        "disease": "Hereditary Breast and Ovarian Cancer Syndrome"
+    },
+    
+    "TP53": {
+        "hpo_terms": [
+            "HP:0002664",
+            "HP:0100526",
+            "HP:0003002",
+            "HP:0030416",
+            "HP:0100031",
+            "HP:0002861"
+        ],
+        "phenotype_names": [
+            "Neoplasm",
+            "Neoplasm of the lung",
+            "Breast carcinoma",
+            "Osteosarcoma",
+            "Adrenocortical carcinoma",
+            "Melanoma"
+        ],
+        "inheritance": "AD",
+        "disease": "Li-Fraumeni syndrome"
+    },
+    
+    "TTN": {
+        "hpo_terms": [
+            "HP:0001635",
+            "HP:0001644",
+            "HP:0001638",
+            "HP:0001639",
+            "HP:0011675"
+        ],
+        "phenotype_names": [
+            "Congestive heart failure",
+            "Dilated cardiomyopathy",
+            "Cardiomyopathy",
+            "Hypertrophic cardiomyopathy",
+            "Arrhythmia"
+        ],
+        "inheritance": "AD/AR",
+        "disease": "Dilated Cardiomyopathy"
+    },
+    
+    "CFTR": {
+        "hpo_terms": [
+            "HP:0002110",
+            "HP:0002099",
+            "HP:0002024",
+            "HP:0001738",
+            "HP:0012236",
+            "HP:0000789"
+        ],
+        "phenotype_names": [
+            "Bronchiectasis",
+            "Asthma",
+            "Malabsorption",
+            "Exocrine pancreatic insufficiency",
+            "Elevated sweat chloride",
+            "Infertility"
+        ],
+        "inheritance": "AR",
+        "disease": "Cystic Fibrosis"
+    },
+    
+    "MLH1": {
+        "hpo_terms": [
+            "HP:0200008",
+            "HP:0100273",
+            "HP:0002894",
+            "HP:0012114",
+            "HP:0030255"
+        ],
+        "phenotype_names": [
+            "Colorectal adenocarcinoma",
+            "Colon adenomatous polyposis",
+            "Endometrial carcinoma",
+            "Male infertility",
+            "Sebaceous carcinoma"
+        ],
+        "inheritance": "AD",
+        "disease": "Lynch Syndrome"
+    },
+    
+    "MSH2": {
+        "hpo_terms": [
+            "HP:0200008",
+            "HP:0002894",
+            "HP:0030255",
+            "HP:0100526",
+            "HP:0002860"
+        ],
+        "phenotype_names": [
+            "Colorectal adenocarcinoma",
+            "Endometrial carcinoma",
+            "Sebaceous carcinoma",
+            "Neoplasm of the lung",
+            "Renal cell carcinoma"
+        ],
+        "inheritance": "AD",
+        "disease": "Lynch Syndrome"
+    },
+    
+    "PKD1": {
+        "hpo_terms": [
+            "HP:0000113",
+            "HP:0001407",
+            "HP:0004944",
+            "HP:0000822",
+            "HP:0001297"
+        ],
+        "phenotype_names": [
+            "Polycystic kidney dysplasia",
+            "Hepatic cysts",
+            "Cerebral aneurysm",
+            "Hypertension",
+            "Stroke"
+        ],
+        "inheritance": "AD",
+        "disease": "Autosomal Dominant Polycystic Kidney Disease"
+    },
+    
+    "DMD": {
+        "hpo_terms": [
+            "HP:0003236",
+            "HP:0003560",
+            "HP:0003325",
+            "HP:0001644",
+            "HP:0000158"
+        ],
+        "phenotype_names": [
+            "Elevated serum creatine kinase",
+            "Muscular dystrophy",
+            "Limb-girdle muscular weakness",
+            "Dilated cardiomyopathy",
+            "Macroglossia"
+        ],
+        "inheritance": "XLR",
+        "disease": "Duchenne Muscular Dystrophy"
+    },
+    
+    "HBB": {
+        "hpo_terms": [
+            "HP:0001903",
+            "HP:0001744",
+            "HP:0001878",
+            "HP:0012130",
+            "HP:0002904"
+        ],
+        "phenotype_names": [
+            "Anemia",
+            "Splenomegaly",
+            "Hemolytic anemia",
+            "Abnormal hemoglobin",
+            "Hyperbilirubinemia"
+        ],
+        "inheritance": "AR",
+        "disease": "Sickle Cell Disease / Beta-Thalassemia"
+    },
+    
+    "NF1": {
+        "hpo_terms": [
+            "HP:0000957",
+            "HP:0007565",
+            "HP:0010816",
+            "HP:0002858",
+            "HP:0000750"
+        ],
+        "phenotype_names": [
+            "Cafe-au-lait spots",
+            "Multiple cafe-au-lait spots",
+            "Lisch nodules",
+            "Meningioma",
+            "Delayed speech and language development"
+        ],
+        "inheritance": "AD",
+        "disease": "Neurofibromatosis Type 1"
+    },
+    
+    "LDLR": {
+        "hpo_terms": [
+            "HP:0003124",
+            "HP:0001658",
+            "HP:0001649",
+            "HP:0100546",
+            "HP:0003077"
+        ],
+        "phenotype_names": [
+            "Hypercholesterolemia",
+            "Myocardial infarction",
+            "Tachycardia",
+            "Xanthomatosis",
+            "Hyperlipidemia"
+        ],
+        "inheritance": "AD",
+        "disease": "Familial Hypercholesterolemia"
+    },
+    
+    "FBN1": {
+        "hpo_terms": [
+            "HP:0001166",
+            "HP:0001083",
+            "HP:0004933",
+            "HP:0001763",
+            "HP:0000768"
+        ],
+        "phenotype_names": [
+            "Arachnodactyly",
+            "Ectopia lentis",
+            "Aortic root aneurysm",
+            "Pes planus",
+            "Pectus carinatum"
+        ],
+        "inheritance": "AD",
+        "disease": "Marfan Syndrome"
+    },
+    
+    "RB1": {
+        "hpo_terms": [
+            "HP:0009919",
+            "HP:0002664",
+            "HP:0030416",
+            "HP:0001030"
+        ],
+        "phenotype_names": [
+            "Retinoblastoma",
+            "Neoplasm",
+            "Osteosarcoma",
+            "Macular dystrophy"
+        ],
+        "inheritance": "AD",
+        "disease": "Retinoblastoma"
+    },
+    
+    "SCN1A": {
+        "hpo_terms": [
+            "HP:0001250",
+            "HP:0001336",
+            "HP:0002197",
+            "HP:0002123",
+            "HP:0000750"
+        ],
+        "phenotype_names": [
+            "Seizures",
+            "Myoclonus",
+            "Generalized tonic-clonic seizures",
+            "Absence seizures",
+            "Delayed speech and language development"
+        ],
+        "inheritance": "AD",
+        "disease": "Dravet Syndrome"
+    },
+    
+    "APC": {
+        "hpo_terms": [
+            "HP:0200008",
+            "HP:0100273",
+            "HP:0005227",
+            "HP:0002893",
+            "HP:0030255"
+        ],
+        "phenotype_names": [
+            "Colorectal adenocarcinoma",
+            "Colon adenomatous polyposis",
+            "Adenomatous colonic polyposis",
+            "Colorectal polyposis",
+            "Sebaceous carcinoma"
+        ],
+        "inheritance": "AD",
+        "disease": "Familial Adenomatous Polyposis"
+    }
+}

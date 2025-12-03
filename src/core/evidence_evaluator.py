@@ -1,4 +1,29 @@
+# =============================================================================
+# LEGACY VariantData Class
+# =============================================================================
+# NOTE: This is a LEGACY implementation kept for backward compatibility.
+# CANONICAL IMPLEMENTATION: Use core/variant_data.py (dataclass version) instead.
+# TODO: Migrate all usages to core/variant_data.VariantData and remove this class.
+# =============================================================================
+from typing import Optional
+
+
 class VariantData:
+    """
+    Legacy VariantData class for backward compatibility.
+    
+    DEPRECATED: Use core.variant_data.VariantData (dataclass) instead.
+    This class is maintained only for existing code that depends on it.
+    
+    Args:
+        basic_info: Basic variant information (gene, position, alleles, etc.)
+        population_data: Population frequency data from gnomAD, ExAC, etc.
+        insilico_data: In silico prediction scores (REVEL, CADD, etc.)
+        genetic_data: Genetic context (inheritance, zygosity, etc.)
+        functional_data: Functional study results
+        patient_phenotypes: Patient phenotype information
+        clinvar_data: ClinVar database information
+    """
     def __init__(self, basic_info=None, population_data=None, insilico_data=None, genetic_data=None, functional_data=None, patient_phenotypes=None, clinvar_data=None):
         self.basic_info = basic_info or {}
         self.population_data = population_data or {}
@@ -9,13 +34,32 @@ class VariantData:
         self.clinvar_data = clinvar_data
 
     @property
-    def gene(self):
+    def gene(self) -> Optional[str]:
+        """Get gene symbol from basic_info."""
         return self.basic_info.get('gene', None)
 
     @property
-    def hgvs_c(self):
+    def hgvs_c(self) -> Optional[str]:
+        """Get HGVS cDNA notation from basic_info."""
         return self.basic_info.get('hgvs_c', None)
+# =============================================================================
+# InframeAnalyzer Class
+# =============================================================================
+# NOTE: This class provides specialized analysis for in-frame deletions/insertions.
+# Some methods are placeholder implementations pending full integration.
+# =============================================================================
 class InframeAnalyzer:
+    """
+    Analyzer for in-frame insertion/deletion variants.
+    
+    Evaluates whether in-frame indels affect critical functional regions,
+    which influences PM4 (protein length changes) and BP3 (repeat region) criteria.
+    
+    Attributes:
+        critical_regions: Dict mapping genes to critical region coordinates
+        repeat_regions: Dict mapping genes to repeat region coordinates
+        domain_boundaries: Dict mapping genes to functional domain boundaries
+    """
     def __init__(self):
         import logging
         self.logger = logging.getLogger("InframeAnalyzer")
@@ -23,8 +67,17 @@ class InframeAnalyzer:
         self.repeat_regions = self._load_repeat_regions()
         self.domain_boundaries = self._load_domain_boundaries()
 
-    def evaluate_inframe_deletion(self, variant_data):
-        """Enhanced inframe deletion evaluation"""
+    def evaluate_inframe_deletion(self, variant_data) -> Optional[str]:
+        """
+        Evaluate in-frame deletion for ACMG criteria applicability.
+        
+        Args:
+            variant_data: VariantData object containing variant information
+            
+        Returns:
+            str or None: 'PM4' if deletion affects critical region/domain,
+                        'BP3' if in repeat region, None otherwise
+        """
         if self._affects_critical_region(variant_data):
             return 'PM4'
         if self._affects_functional_domain(variant_data):
@@ -130,13 +183,153 @@ class EvidenceEvaluator:
             self.api_client = None
             self.api_enabled = False
         
+        # Initialize multi-source API clients for predictors and population data
+        self._init_multi_source_clients()
+        
         # Yeni modüller entegre ediliyor
         from core.functional_studies_evaluator import FunctionalStudiesEvaluator
         from core.phenotype_matcher import PhenotypeMatcher
+        from core.missense_evaluator import MissenseEvaluator
         from utils.statistical_utils import StatisticalAnalyzer
         self.functional_studies_evaluator = FunctionalStudiesEvaluator()
         self.phenotype_matcher = PhenotypeMatcher()
         self.statistical_analyzer = StatisticalAnalyzer()
+        self.missense_evaluator = MissenseEvaluator()
+        
+        # Interactive evidence collector for literature-based criteria
+        # Initialized lazily when needed (to avoid prompts in automated mode)
+        self._interactive_collector = None
+        self._manual_evidence = None
+    
+    def _init_multi_source_clients(self) -> None:
+        """
+        Initialize multi-source API clients for predictor and population data.
+        
+        These clients implement the "fetch once, interpret many" pattern where
+        all external data is fetched at the start of evaluation, then evaluators
+        work as pure interpreters of pre-fetched data.
+        
+        Uses a shared ResultCache instance for validated caching across all
+        API clients.
+        """
+        from config.constants import API_SETTINGS
+        
+        try:
+            from utils.predictor_api_client import PredictorAPIClient, PopulationAPIClient
+            
+            # Try to initialize shared ResultCache for validated caching
+            result_cache = None
+            try:
+                from utils.cache import ResultCache
+                result_cache = ResultCache(enabled=not self.test_mode)
+            except ImportError:
+                pass  # Cache module not available - continue without caching
+            
+            self.predictor_client = PredictorAPIClient(
+                api_enabled=API_SETTINGS.get('enabled', True),
+                timeout=API_SETTINGS.get('timeout', 15),
+                test_mode=self.test_mode,
+                result_cache=result_cache
+            )
+            self.population_client = PopulationAPIClient(
+                api_enabled=API_SETTINGS.get('enabled', True),
+                timeout=API_SETTINGS.get('timeout', 15),
+                test_mode=self.test_mode,
+                result_cache=result_cache
+            )
+            
+            # Store cache reference for potential direct access
+            self._result_cache = result_cache
+            
+        except ImportError as e:
+            print(f"⚠️  Warning: Multi-source API clients not available: {str(e)}")
+            self.predictor_client = None
+            self.population_client = None
+            self._result_cache = None
+        except Exception as e:
+            print(f"⚠️  Warning: Could not initialize multi-source clients: {str(e)}")
+            self.predictor_client = None
+            self.population_client = None
+            self._result_cache = None
+    
+    def _fetch_external_data(self, variant_data) -> None:
+        """
+        Pre-fetch all external data for a variant before evaluation.
+        
+        This method implements the "fetch once, interpret many" pattern.
+        All external predictor and population data is fetched here and
+        stored in the variant_data object for use by evaluators.
+        
+        This approach:
+        - Minimizes API calls by fetching once per variant
+        - Enables offline testing with mocked data
+        - Makes evaluators pure functions that interpret pre-fetched data
+        - Provides graceful degradation when sources are unavailable
+        
+        Args:
+            variant_data: VariantData object to populate with external data
+        """
+        # Skip if data already fetched (avoid redundant API calls)
+        if hasattr(variant_data, 'predictor_scores') and variant_data.predictor_scores:
+            return
+        
+        # Skip if insilico_data already present (backward compatibility)
+        # This allows tests to provide their own predictor data without API override
+        insilico_data = getattr(variant_data, 'insilico_data', {}) or {}
+        if insilico_data:
+            # Don't fetch from API if test data is already provided
+            return
+        
+        basic_info = variant_data.basic_info or {}
+        chrom = basic_info.get('chromosome')
+        pos = basic_info.get('position')
+        ref = basic_info.get('ref_allele')
+        alt = basic_info.get('alt_allele')
+        gene = basic_info.get('gene')
+        
+        # Fetch predictor scores from multi-source API
+        if self.predictor_client and chrom and pos and ref and alt:
+            try:
+                variant_data.predictor_scores = self.predictor_client.get_predictor_scores(
+                    chrom=str(chrom),
+                    pos=int(pos),
+                    ref=str(ref),
+                    alt=str(alt),
+                    gene=gene
+                )
+                
+                # Log available predictors
+                if variant_data.predictor_scores:
+                    available = sum(
+                        1 for s in variant_data.predictor_scores.values() 
+                        if hasattr(s, 'value') and s.value is not None
+                    )
+                    if available > 0:
+                        print(f"📊 Fetched {available} predictor scores from external APIs")
+                        
+            except Exception as e:
+                print(f"⚠️  Warning: Could not fetch predictor scores: {str(e)}")
+                variant_data.predictor_scores = None
+        
+        # Fetch population statistics from multi-source API
+        if self.population_client and chrom and pos and ref and alt:
+            try:
+                variant_data.population_stats = self.population_client.get_population_stats(
+                    chrom=str(chrom),
+                    pos=int(pos),
+                    ref=str(ref),
+                    alt=str(alt)
+                )
+                
+                # Log population data availability
+                if variant_data.population_stats:
+                    sources = list(variant_data.population_stats.keys())
+                    if sources:
+                        print(f"📊 Fetched population data from: {', '.join(sources)}")
+                        
+            except Exception as e:
+                print(f"⚠️  Warning: Could not fetch population stats: {str(e)}")
+                variant_data.population_stats = None
     
     def evaluate_all_criteria(self, variant_data) -> Dict[str, Any]:
         """
@@ -156,6 +349,10 @@ class EvidenceEvaluator:
             'vampp_score': None,
             'statistical_tests': {}
         }
+        
+        # Pre-fetch external data (predictors, population frequencies)
+        # This implements "fetch once, interpret many" pattern
+        self._fetch_external_data(variant_data)
         
         # Evaluate pathogenic criteria
         results['pathogenic_criteria'] = self._evaluate_pathogenic_criteria(variant_data)
@@ -652,42 +849,206 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_ps1_interactive(self, variant_data, gene, aa_change) -> Dict[str, Any]:
-        """Interactive PS1 evaluation with user input."""
-        result = {'applies': False, 'strength': 'Strong', 'details': ''}
+        """
+        Enhanced Interactive PS1 evaluation with intelligent guidance system.
         
-        print(f"\n🔍 PS1 Evaluation: {gene} {aa_change}")
-        print("─" * 50)
-        print("QUESTION: Have you found the exact same amino acid change reported as pathogenic?")
-        print()
-        print("📋 Search recommendations:")
-        print(f"   • PubMed: '{gene} {aa_change} pathogenic'")
-        print(f"   • ClinVar: '{gene} {aa_change}'")
-        print(f"   • HGMD: Same amino acid change")
-        print(f"   • Literature: Functional studies on this change")
-        print()
-        print("💡 PS1 applies if the EXACT same amino acid change has been reported as pathogenic")
-        print("   with sufficient evidence in the literature.")
+        Features:
+        - Context-aware search recommendations
+        - Evidence quality assessment
+        - Decision tree guidance
+        - Real-time validation feedback
+        """
+        result = {'applies': False, 'strength': 'Strong', 'details': '', 'guidance_used': True}
+        
+        print(f"\n🧬 ACMG PS1 Interactive Guidance System")
+        print("=" * 60)
+        print(f"🎯 Evaluating: {gene} {aa_change}")
+        print(f"📖 Criterion: PS1 - Same amino acid change as pathogenic variant")
         print()
         
+        # STEP 1: Context-aware search strategy
+        print("🔍 STEP 1: INTELLIGENT SEARCH STRATEGY")
+        print("─" * 40)
+        
+        # Gene-specific search recommendations
+        gene_context = self._get_gene_context(gene)
+        if gene_context['is_cancer_gene']:
+            print(f"🎯 {gene} is a known cancer gene - Focus on:")
+            print(f"   • Somatic mutation databases (COSMIC, TCGA)")
+            print(f"   • Tumor suppressor/oncogene literature")
+        elif gene_context['is_mendelian_gene']:
+            print(f"🎯 {gene} is associated with Mendelian disease - Focus on:")
+            print(f"   • Inherited variant databases (ClinVar, HGMD)")
+            print(f"   • Family segregation studies")
+        
+        print(f"\n📚 Recommended search terms:")
+        print(f"   🔸 Primary: '{gene} {aa_change} pathogenic'")
+        print(f"   🔸 Alternative: '{gene} {aa_change} disease-causing'")
+        print(f"   🔸 Functional: '{gene} {aa_change} functional analysis'")
+        print(f"   🔸 Position: '{gene} codon {self._extract_codon_number(aa_change)} mutation'")
+        
+        print(f"\n🗄️  Database search priority:")
+        print(f"   1️⃣  ClinVar: https://www.ncbi.nlm.nih.gov/clinvar/")
+        print(f"   2️⃣  HGMD Professional (if available)")
+        print(f"   3️⃣  PubMed: https://pubmed.ncbi.nlm.nih.gov/")
+        print(f"   4️⃣  LOVD: https://www.lovd.nl/")
+        print(f"   5️⃣  Gene-specific databases")
+        
+        # STEP 2: Evidence quality assessment guide
+        print(f"\n📊 STEP 2: EVIDENCE QUALITY ASSESSMENT")
+        print("─" * 40)
+        print("💡 PS1 requires HIGH-QUALITY evidence. Check for:")
+        print()
+        print("✅ STRONG EVIDENCE (Apply PS1):")
+        print("   • Multiple independent reports of pathogenicity")
+        print("   • Functional studies confirming damage")
+        print("   • Clear disease association with segregation")
+        print("   • Expert panel classification (ClinGen, etc.)")
+        print()
+        print("⚠️  MODERATE EVIDENCE (Consider PM5 instead):")
+        print("   • Single case report without functional data")
+        print("   • Conflicting interpretations in databases")
+        print("   • Limited segregation data")
+        print()
+        print("❌ WEAK EVIDENCE (Do not apply PS1):")
+        print("   • Only computational predictions")
+        print("   • Uncertain significance classifications")
+        print("   • No independent validation")
+        
+        # STEP 3: Interactive decision tree
+        print(f"\n🌳 STEP 3: DECISION TREE GUIDANCE")
+        print("─" * 40)
+        
+        # Question 1: Basic evidence check
         while True:
-            choice = input("PS1 Evidence Found? (y/n/u for unknown): ").strip().lower()
-            if choice in ['y', 'yes']:
-                result['applies'] = True
-                result['details'] = f"Same amino acid change {aa_change} in {gene} reported as pathogenic (PS1)"
-                print(f"✅ PS1 applies: {result['details']}")
-                break
-            elif choice in ['n', 'no']:
-                result['details'] = f"No evidence found for same amino acid change {aa_change} in {gene}"
-                print(f"❌ PS1 does not apply: {result['details']}")
-                break
-            elif choice in ['u', 'unknown']:
-                result['details'] = f"Evidence unclear for {aa_change} in {gene} - requires further investigation"
-                print(f"⚠️  PS1 unclear: {result['details']}")
+            print(f"\n❓ Q1: Did you find ANY reports of {aa_change} in {gene}?")
+            q1 = input("   Enter: (y)es / (n)o / (h)elp: ").strip().lower()
+            
+            if q1 in ['h', 'help']:
+                print(f"\n💡 HELP: Search tips for {gene} {aa_change}:")
+                print(f"   • Try alternative amino acid notations (3-letter vs 1-letter)")
+                print(f"   • Search for the codon position without specific change")
+                print(f"   • Check if gene has alternative names/symbols")
+                print(f"   • Look for functional domain information")
+                continue
+            elif q1 in ['n', 'no']:
+                result['details'] = f"No reports found for {aa_change} in {gene} - PS1 does not apply"
+                print(f"\n❌ PS1 Result: Does not apply")
+                print(f"💡 Recommendation: Consider PM5 if different AA change at same position is pathogenic")
+                return result
+            elif q1 in ['y', 'yes']:
                 break
             else:
-                print("❌ Please enter 'y' for yes, 'n' for no, or 'u' for unknown")
+                print("❌ Please enter 'y', 'n', or 'h'")
+        
+        # Question 2: Pathogenicity evidence
+        while True:
+            print(f"\n❓ Q2: Are these reports classified as PATHOGENIC/LIKELY PATHOGENIC?")
+            print("   (Not VUS, not conflicting interpretations)")
+            q2 = input("   Enter: (y)es / (n)o / (c)onflicting / (h)elp: ").strip().lower()
+            
+            if q2 in ['h', 'help']:
+                print(f"\n💡 HELP: Pathogenicity assessment:")
+                print(f"   ✅ PATHOGENIC: Clear disease-causing evidence")
+                print(f"   ✅ LIKELY PATHOGENIC: Strong evidence, high confidence")
+                print(f"   ❌ VUS: Uncertain significance, insufficient evidence")
+                print(f"   ❌ CONFLICTING: Mixed pathogenic/benign interpretations")
+                print(f"   💡 Look for: Expert review panels, functional validation")
+                continue
+            elif q2 in ['n', 'no']:
+                result['details'] = f"Reports of {aa_change} in {gene} not classified as pathogenic - PS1 does not apply"
+                print(f"\n❌ PS1 Result: Does not apply")
+                return result
+            elif q2 in ['c', 'conflicting']:
+                result['details'] = f"Conflicting interpretations for {aa_change} in {gene} - PS1 requires manual expert review"
+                print(f"\n⚠️  PS1 Result: Requires expert review")
+                print(f"💡 Recommendation: Consult clinical geneticist or molecular pathologist")
+                return result
+            elif q2 in ['y', 'yes']:
+                break
+            else:
+                print("❌ Please enter 'y', 'n', 'c', or 'h'")
+        
+        # Question 3: Evidence strength
+        while True:
+            print(f"\n❓ Q3: How strong is the pathogenic evidence?")
+            print("   (s)trong - Multiple independent sources, functional data")
+            print("   (m)oderate - Single well-documented case, some functional data")
+            print("   (w)eak - Limited evidence, mostly computational")
+            q3 = input("   Enter: (s)trong / (m)oderate / (w)eak / (h)elp: ").strip().lower()
+            
+            if q3 in ['h', 'help']:
+                print(f"\n💡 HELP: Evidence strength criteria:")
+                print(f"   🔥 STRONG: ≥2 independent studies + functional validation")
+                print(f"   🔶 MODERATE: 1 good study + some supporting evidence")
+                print(f"   🔸 WEAK: Case reports only, no functional data")
+                print(f"   💡 Consider: Study quality, sample size, replication")
+                continue
+            elif q3 in ['s', 'strong']:
+                result['applies'] = True
+                result['strength'] = 'Strong'
+                result['details'] = f"Strong evidence: Same amino acid change {aa_change} in {gene} reported as pathogenic with robust supporting data (PS1)"
+                result['confidence'] = 'high'
+                break
+            elif q3 in ['m', 'moderate']:
+                result['applies'] = True
+                result['strength'] = 'Strong'  # PS1 is always Strong when applied
+                result['details'] = f"Moderate evidence: Same amino acid change {aa_change} in {gene} reported as pathogenic (PS1)"
+                result['confidence'] = 'medium'
+                print(f"\n⚠️  Note: Consider additional supporting evidence (PM1, PM5, PP3)")
+                break
+            elif q3 in ['w', 'weak']:
+                result['applies'] = False
+                result['details'] = f"Weak evidence for {aa_change} in {gene} - insufficient for PS1"
+                print(f"\n❌ PS1 Result: Does not apply (evidence too weak)")
+                print(f"💡 Recommendation: Consider PM5 or PP3 instead")
+                return result
+            else:
+                print("❌ Please enter 's', 'm', 'w', or 'h'")
+        
+        # STEP 4: Final validation and recommendations
+        print(f"\n✅ STEP 4: FINAL VALIDATION")
+        print("─" * 40)
+        if result['applies']:
+            print(f"🎉 PS1 APPLIES: {result['details']}")
+            print(f"💪 Strength: {result['strength']} (ACMG Standard)")
+            print(f"📊 Confidence: {result.get('confidence', 'medium')}")
+            
+            print(f"\n🔗 SYNERGISTIC CRITERIA TO CONSIDER:")
+            print(f"   • PM1: If in mutational hotspot/critical domain")
+            print(f"   • PP3: If computational predictors support pathogenicity")
+            print(f"   • PP4: If patient phenotype matches gene-disease association")
+            
+        print(f"\n📝 DOCUMENTATION REMINDER:")
+        print(f"   • Record specific publications/database entries used")
+        print(f"   • Note evidence quality and any limitations")
+        print(f"   • Consider periodic re-evaluation as new data emerges")
         
         return result
+    
+    def _get_gene_context(self, gene: str) -> Dict[str, Any]:
+        """Get contextual information about gene for targeted search recommendations."""
+        # This could be enhanced with API calls to gene databases
+        cancer_genes = {'TP53', 'BRCA1', 'BRCA2', 'APC', 'MLH1', 'MSH2', 'MSH6', 'PMS2', 'KRAS', 'PIK3CA'}
+        mendelian_genes = {'CFTR', 'DMD', 'FBN1', 'LDLR', 'PKU', 'HBB', 'F8', 'F9'}
+        
+        return {
+            'is_cancer_gene': gene.upper() in cancer_genes,
+            'is_mendelian_gene': gene.upper() in mendelian_genes,
+            'gene_symbol': gene.upper()
+        }
+    
+    def _extract_codon_number(self, aa_change: str) -> str:
+        """Extract codon number from amino acid change notation."""
+        import re
+        if not aa_change:
+            return "unknown"
+        
+        # Handle different formats: p.Arg273His, R273H, etc.
+        match = re.search(r'(\d+)', aa_change)
+        if match:
+            return match.group(1)
+        return "unknown"
     
     def _evaluate_ps2(self, variant_data) -> Dict[str, Any]:
         """Evaluate PS2 - De novo variant with enhanced logic and strict 2023 upgrade rules."""
@@ -1078,25 +1439,281 @@ class EvidenceEvaluator:
                 print(f"{COLORAMA_COLORS['YELLOW']}⚠ API check failed ({str(e)[:50]}) - using fallback data{COLORAMA_COLORS['RESET']}")
                 pass
         
-        # Legacy fallback: If flags not set, check for known hotspot genes
-        if gene:
-            hotspot_genes = {
-                'TP53': ['DNA_binding_domain', 'tetramerization_domain'],
-                'KRAS': ['GTPase_domain'],
-                'PIK3CA': ['helical_domain', 'kinase_domain'],
-                'BRAF': ['kinase_domain'],
-                'EGFR': ['kinase_domain', 'tyrosine_kinase_domain']
-            }
-            
-            if gene.upper() in hotspot_genes:
-                result['details'] = f"Gene {gene} has known hotspot regions - manual domain analysis required"
-                result['manual_review'] = True
-            else:
-                result['details'] = f"No hotspot or functional domain data available"
+        # Interactive guidance for PM1 if no automated data available
+        if gene and not self.test_mode and not result.get('applies') and not result.get('manual_review'):
+            result = self._evaluate_pm1_interactive(variant_data, gene, position)
+        
+        # Test mode or no gene: return negative result without API calls
+        elif gene:
+            # In test mode, use GeneSpecificRules which queries remote APIs only
+            try:
+                from core.gene_specific_rules import GeneSpecificRules
+                rules = GeneSpecificRules()
+                pm1_result = rules.evaluate_pm1(gene=gene, position=position)
+                
+                if pm1_result.applies:
+                    result['applies'] = True
+                    result['details'] = pm1_result.reason
+                    result['api_source'] = pm1_result.source
+                    result['confidence'] = pm1_result.confidence
+                    if pm1_result.evidence_code == 'PM1_supporting':
+                        result['strength'] = 'Supporting'
+                else:
+                    result['details'] = pm1_result.reason or "No hotspot/domain data from remote APIs"
+            except ImportError:
+                result['details'] = "No hotspot or functional domain data available"
+            except Exception as e:
+                result['details'] = f"PM1 evaluation error: {str(e)[:50]}"
         else:
             result['details'] = "Insufficient variant information for PM1 evaluation"
         
         return result
+    
+    def _evaluate_pm1_interactive(self, variant_data, gene: str, position: Optional[int]) -> Dict[str, Any]:
+        """
+        Enhanced Interactive PM1 evaluation with intelligent guidance system.
+        
+        Features:
+        - Gene-specific hotspot databases
+        - Functional domain analysis
+        - Structural impact assessment
+        - Evidence quality validation
+        """
+        result = {'applies': False, 'strength': 'Moderate', 'details': '', 'guidance_used': True}
+        
+        print(f"\n🎯 ACMG PM1 Interactive Guidance System")
+        print("=" * 60)
+        print(f"🧬 Evaluating: {gene}", end='')
+        if position:
+            print(f" position {position}")
+        else:
+            print()
+        print(f"📖 Criterion: PM1 - Mutational hotspot/critical functional domain")
+        print()
+        
+        # STEP 1: Gene-specific database recommendations
+        print("🗄️  STEP 1: GENE-SPECIFIC DATABASE SEARCH")
+        print("─" * 40)
+        
+        gene_databases = self._get_gene_specific_databases(gene)
+        if gene_databases:
+            print(f"🎯 Recommended databases for {gene}:")
+            for db_name, db_info in gene_databases.items():
+                print(f"   🔸 {db_name}: {db_info['url']}")
+                print(f"      Purpose: {db_info['purpose']}")
+        else:
+            print(f"🔍 General databases to search:")
+            print(f"   🔸 COSMIC: https://cancer.sanger.ac.uk/cosmic")
+            print(f"   🔸 ClinVar: https://www.ncbi.nlm.nih.gov/clinvar/")
+            print(f"   🔸 UniProt: https://www.uniprot.org/")
+            print(f"   🔸 InterPro: https://www.ebi.ac.uk/interpro/")
+        
+        print(f"\n📚 Search strategy:")
+        print(f"   🔸 Hotspots: '{gene} hotspot mutation'")
+        print(f"   🔸 Domains: '{gene} functional domain'")
+        if position:
+            print(f"   🔸 Position: '{gene} residue {position}'")
+        print(f"   🔸 Structure: '{gene} crystal structure'")
+        
+        # STEP 2: Hotspot analysis
+        print(f"\n🔥 STEP 2: MUTATIONAL HOTSPOT ANALYSIS")
+        print("─" * 40)
+        
+        while True:
+            print(f"\n❓ Q1: Is this position a documented mutational hotspot?")
+            print("   (Check cancer databases, mutation frequency data)")
+            q1 = input("   Enter: (y)es / (n)o / (u)nknown / (h)elp: ").strip().lower()
+            
+            if q1 in ['h', 'help']:
+                print(f"\n💡 HELP: Hotspot identification criteria:")
+                print(f"   🔥 HOTSPOT INDICATORS:")
+                print(f"      • High mutation frequency in disease samples")
+                print(f"      • Recurrent mutations in cancer/disease cohorts")
+                print(f"      • Documented in COSMIC, TCGA, or disease databases")
+                print(f"      • Multiple independent reports of pathogenic variants")
+                print(f"   📊 QUANTITATIVE THRESHOLDS:")
+                print(f"      • Cancer: ≥10 samples with mutations at position")
+                print(f"      • Mendelian: ≥3 independent pathogenic reports")
+                print(f"      • Population: Significantly higher than background")
+                continue
+            elif q1 in ['y', 'yes']:
+                # Ask for evidence strength
+                while True:
+                    print(f"\n❓ Q1b: How strong is the hotspot evidence?")
+                    print("   (s)trong - Multiple databases, high frequency")
+                    print("   (m)oderate - Some evidence, moderate frequency")
+                    strength = input("   Enter: (s)trong / (m)oderate / (h)elp: ").strip().lower()
+                    
+                    if strength in ['h', 'help']:
+                        print(f"\n💡 HELP: Evidence strength for hotspots:")
+                        print(f"   🔥 STRONG: COSMIC tier 1, >50 samples, multiple studies")
+                        print(f"   🔶 MODERATE: Some database evidence, 10-50 samples")
+                        continue
+                    elif strength in ['s', 'strong']:
+                        result['applies'] = True
+                        result['details'] = f"Strong hotspot evidence: Position {position or 'unknown'} in {gene} is a well-documented mutational hotspot (PM1)"
+                        result['confidence'] = 'high'
+                        break
+                    elif strength in ['m', 'moderate']:
+                        result['applies'] = True
+                        result['details'] = f"Moderate hotspot evidence: Position {position or 'unknown'} in {gene} shows hotspot characteristics (PM1)"
+                        result['confidence'] = 'medium'
+                        break
+                    else:
+                        print("❌ Please enter 's', 'm', or 'h'")
+                break
+            elif q1 in ['n', 'no']:
+                break  # Continue to domain analysis
+            elif q1 in ['u', 'unknown']:
+                print(f"\n⚠️  Hotspot status unclear - continuing to domain analysis")
+                break
+            else:
+                print("❌ Please enter 'y', 'n', 'u', or 'h'")
+        
+        # STEP 3: Functional domain analysis (if not hotspot)
+        if not result['applies']:
+            print(f"\n🧬 STEP 3: FUNCTIONAL DOMAIN ANALYSIS")
+            print("─" * 40)
+            
+            while True:
+                print(f"\n❓ Q2: Is this variant in a critical functional domain?")
+                print("   (Check protein structure, domain databases)")
+                q2 = input("   Enter: (y)es / (n)o / (u)nknown / (h)elp: ").strip().lower()
+                
+                if q2 in ['h', 'help']:
+                    print(f"\n💡 HELP: Critical functional domain criteria:")
+                    print(f"   🧬 CRITICAL DOMAINS:")
+                    print(f"      • Active sites, binding sites, catalytic domains")
+                    print(f"      • DNA-binding domains, kinase domains")
+                    print(f"      • Structural domains essential for function")
+                    print(f"      • Domains with known disease associations")
+                    print(f"   ❌ NOT CRITICAL:")
+                    print(f"      • Linker regions, flexible loops")
+                    print(f"      • Domains with frequent benign variation")
+                    print(f"      • Non-conserved regions")
+                    continue
+                elif q2 in ['y', 'yes']:
+                    # Check for benign variation in domain
+                    while True:
+                        print(f"\n❓ Q2b: Does this domain have frequent benign variation?")
+                        print("   (PM1 requires domain WITHOUT benign variation)")
+                        benign = input("   Enter: (y)es / (n)o / (u)nknown / (h)elp: ").strip().lower()
+                        
+                        if benign in ['h', 'help']:
+                            print(f"\n💡 HELP: Benign variation assessment:")
+                            print(f"   ❌ FREQUENT BENIGN VARIATION (PM1 does not apply):")
+                            print(f"      • Multiple benign/likely benign variants in domain")
+                            print(f"      • High population frequency variants in domain")
+                            print(f"      • Domain tolerates missense changes")
+                            print(f"   ✅ NO BENIGN VARIATION (PM1 may apply):")
+                            print(f"      • No or very few benign variants in domain")
+                            print(f"      • Domain is highly conserved")
+                            print(f"      • Missense changes typically pathogenic")
+                            continue
+                        elif benign in ['n', 'no']:
+                            result['applies'] = True
+                            result['details'] = f"Variant in critical functional domain without benign variation in {gene} (PM1)"
+                            result['confidence'] = 'medium'
+                            break
+                        elif benign in ['y', 'yes']:
+                            result['applies'] = False
+                            result['details'] = f"Variant in functional domain with benign variation in {gene} - PM1 does not apply"
+                            break
+                        elif benign in ['u', 'unknown']:
+                            result['applies'] = False
+                            result['details'] = f"Functional domain status unclear for {gene} - insufficient evidence for PM1"
+                            break
+                        else:
+                            print("❌ Please enter 'y', 'n', 'u', or 'h'")
+                    break
+                elif q2 in ['n', 'no']:
+                    result['applies'] = False
+                    result['details'] = f"Variant not in critical functional domain in {gene} - PM1 does not apply"
+                    break
+                elif q2 in ['u', 'unknown']:
+                    result['applies'] = False
+                    result['details'] = f"Functional domain status unclear for {gene} - insufficient evidence for PM1"
+                    break
+                else:
+                    print("❌ Please enter 'y', 'n', 'u', or 'h'")
+        
+        # STEP 4: Final validation and recommendations
+        print(f"\n✅ STEP 4: FINAL VALIDATION")
+        print("─" * 40)
+        
+        if result['applies']:
+            print(f"🎉 PM1 APPLIES: {result['details']}")
+            print(f"💪 Strength: {result['strength']} (ACMG Standard)")
+            print(f"📊 Confidence: {result.get('confidence', 'medium')}")
+            
+            print(f"\n🔗 SYNERGISTIC CRITERIA TO CONSIDER:")
+            print(f"   • PS1: If same amino acid change is pathogenic")
+            print(f"   • PM5: If different pathogenic change at same position")
+            print(f"   • PP2: If gene has low rate of benign missense")
+            print(f"   • PP3: If computational predictors support pathogenicity")
+        else:
+            print(f"❌ PM1 DOES NOT APPLY: {result['details']}")
+            print(f"\n💡 ALTERNATIVE CRITERIA TO CONSIDER:")
+            print(f"   • PM5: Different amino acid change at same position")
+            print(f"   • PP2: Missense in gene with low benign rate")
+            print(f"   • PP3: Computational evidence supports pathogenicity")
+        
+        print(f"\n📝 DOCUMENTATION REMINDER:")
+        print(f"   • Record specific databases and evidence used")
+        print(f"   • Note domain boundaries and functional importance")
+        print(f"   • Consider structural/functional validation studies")
+        
+        return result
+    
+    def _get_gene_specific_databases(self, gene: str) -> Dict[str, Dict[str, str]]:
+        """Get gene-specific database recommendations for hotspot analysis."""
+        gene = gene.upper()
+        
+        # Cancer genes
+        cancer_genes = {
+            'TP53': {
+                'IARC TP53 Database': {
+                    'url': 'https://p53.iarc.fr/',
+                    'purpose': 'Comprehensive TP53 mutation database'
+                }
+            },
+            'BRCA1': {
+                'BRCA Exchange': {
+                    'url': 'https://brcaexchange.org/',
+                    'purpose': 'BRCA1/2 variant classification'
+                }
+            },
+            'BRCA2': {
+                'BRCA Exchange': {
+                    'url': 'https://brcaexchange.org/',
+                    'purpose': 'BRCA1/2 variant classification'
+                }
+            }
+        }
+        
+        # Mendelian disease genes
+        mendelian_genes = {
+            'CFTR': {
+                'CFTR2 Database': {
+                    'url': 'https://cftr2.org/',
+                    'purpose': 'Cystic fibrosis variant database'
+                }
+            },
+            'DMD': {
+                'Leiden DMD Database': {
+                    'url': 'https://www.dmd.nl/',
+                    'purpose': 'Duchenne muscular dystrophy variants'
+                }
+            }
+        }
+        
+        # Return gene-specific databases if available
+        if gene in cancer_genes:
+            return cancer_genes[gene]
+        elif gene in mendelian_genes:
+            return mendelian_genes[gene]
+        else:
+            return {}
     
     def _evaluate_pm2(self, variant_data) -> Dict[str, Any]:
         """
@@ -1709,13 +2326,29 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_pp3(self, variant_data) -> Dict[str, Any]:
-        """Evaluate PP3 - Computational evidence suggests pathogenic impact."""
+        """
+        Evaluate PP3 - Computational evidence suggests pathogenic impact.
+        
+        For missense variants, uses the MissenseEvaluator composite score.
+        For other variants, falls back to simple predictor counting.
+        
+        Returns dict with:
+            - applies: bool
+            - strength: 'Supporting', 'Moderate', or 'Strong'
+            - details: str explanation
+            - composite_score: float (for missense variants)
+        """
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Check in silico predictors
-        insilico_data = variant_data.insilico_data
+        variant_type = variant_data.basic_info.get('variant_type', '').lower()
         
-        # Count pathogenic predictions
+        # Use MissenseEvaluator for missense variants
+        if variant_type == 'missense':
+            return self._evaluate_missense_pp3_bp4(variant_data, direction='pathogenic')
+        
+        # Fallback for non-missense variants: simple predictor counting
+        insilico_data = variant_data.insilico_data or {}
+        
         pathogenic_count = 0
         total_count = 0
         
@@ -1734,18 +2367,15 @@ class EvidenceEvaluator:
             if score is not None:
                 total_count += 1
                 if predictor in ['sift', 'fathmm']:
-                    # For SIFT and FATHMM, lower values are more damaging
                     if score < threshold:
                         pathogenic_count += 1
                 else:
-                    # For other predictors, higher values are more damaging
                     if score > threshold:
                         pathogenic_count += 1
         
-        # Apply PP3 if majority of predictors suggest pathogenic
         if total_count > 0:
             pathogenic_ratio = pathogenic_count / total_count
-            if pathogenic_ratio >= 0.7:  # 70% or more predict pathogenic
+            if pathogenic_ratio >= 0.7:
                 result['applies'] = True
                 result['details'] = f"Computational evidence suggests pathogenic impact ({pathogenic_count}/{total_count} predictors)"
             else:
@@ -1755,35 +2385,136 @@ class EvidenceEvaluator:
         
         return result
     
-    def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
-        # Automated assignment for PP4 using PhenotypeMatcher or genetic_data
+    def _evaluate_missense_pp3_bp4(self, variant_data, direction: str = 'pathogenic') -> Dict[str, Any]:
+        """
+        Evaluate PP3/BP4 for missense variants using composite score.
+        
+        Uses MissenseEvaluator to generate a composite score and maps it
+        to ACMG evidence categories.
+        
+        Args:
+            variant_data: VariantData object
+            direction: 'pathogenic' for PP3, 'benign' for BP4
+            
+        Returns:
+            Dict with applies, strength, details, and composite_score
+        """
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        
+        # Get composite score from MissenseEvaluator
+        eval_result = self.missense_evaluator.evaluate_missense_variant(variant_data)
+        
+        composite_score = eval_result.get('composite_score', 0.5)
+        evidence_category = eval_result.get('evidence_category', 'neutral')
+        strength = eval_result.get('strength')
+        eval_direction = eval_result.get('direction', 'neutral')
+        confidence = eval_result.get('confidence', 'low')
+        
+        result['composite_score'] = composite_score
+        result['sub_scores'] = eval_result.get('sub_scores', {})
+        result['confidence'] = confidence
+        
+        # Check if evidence applies in the requested direction
+        if direction == 'pathogenic' and eval_direction == 'pathogenic':
+            result['applies'] = True
+            result['strength'] = strength.capitalize() if strength else 'Supporting'
+            result['details'] = (
+                f"Missense composite score {composite_score:.3f} → {evidence_category} "
+                f"(confidence: {confidence})"
+            )
+        elif direction == 'benign' and eval_direction == 'benign':
+            result['applies'] = True
+            result['strength'] = strength.capitalize() if strength else 'Supporting'
+            result['details'] = (
+                f"Missense composite score {composite_score:.3f} → {evidence_category} "
+                f"(confidence: {confidence})"
+            )
+        else:
+            result['details'] = (
+                f"Missense composite score {composite_score:.3f} → {evidence_category} "
+                f"(does not support {direction} evidence)"
+            )
+        
+        return result
+    
+    def _evaluate_pp4(self, variant_data) -> Dict[str, Any]:
+        """
+        Evaluate PP4 - Patient phenotype is highly specific for a disease with a single genetic etiology.
+        
+        This method uses the PhenotypeMatcher to evaluate phenotype-genotype correlation
+        using local gene-phenotype association data and Jaccard similarity scoring.
+        
+        PP4 Evidence Thresholds:
+            - similarity >= 0.8: PP4 applies (strong phenotype match)
+            - similarity >= 0.5: PP4_supporting (moderate match)
+            - similarity <= 0.2: Consider BP5 instead (phenotype inconsistent)
+        
+        NOTE: This is an educational approximation using local data files.
+        For production use, consider integrating with HPO semantic similarity APIs.
+        """
+        result = {
+            'applies': False, 
+            'strength': 'Supporting', 
+            'details': '',
+            'confidence': 'low',
+            'data_source': 'local_phenotype_db'
+        }
         
         gene = variant_data.basic_info.get('gene')
         patient_phenotypes = getattr(variant_data, 'patient_phenotypes', None)
         
-        # CRITICAL FIX: Check genetic_data for phenotype_specificity
+        # CRITICAL FIX: Check genetic_data for phenotype_specificity (manual override)
         genetic_data = variant_data.genetic_data or {}
         phenotype_specificity = genetic_data.get('phenotype_specificity')
         
-        # If explicit phenotype specificity is provided
-        if phenotype_specificity == 'high' and patient_phenotypes:
+        # Manual override: If explicit phenotype specificity is provided by user
+        if phenotype_specificity == 'high' and gene:
             result['applies'] = True
-            result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
+            result['confidence'] = 'high'
+            result['data_source'] = 'user_provided'
+            result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4) [user-specified]"
             return result
         
-        # Use PhenotypeMatcher for automated evaluation
-        if patient_phenotypes and gene:
-            pp4_bp5 = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
-            if pp4_bp5 == 'PP4':
-                result['applies'] = True
-                result['details'] = f"Patient phenotype highly specific for {gene}-related disease (PP4)"
-            elif pp4_bp5 == 'BP5':
-                result['details'] = f"Patient phenotype not consistent with {gene}-related disease (BP5)"
+        # Use PhenotypeMatcher for automated evaluation with local data
+        if gene:
+            # Get phenotypes from patient_phenotypes or genetic_data
+            if not patient_phenotypes:
+                patient_phenotypes = genetic_data.get('patient_phenotypes') or genetic_data.get('phenotypes')
+            
+            if patient_phenotypes:
+                # Call PhenotypeMatcher with full result structure
+                match_result = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
+                
+                if match_result:
+                    similarity = match_result.get('similarity', 0.0)
+                    evidence_code = match_result.get('evidence_code')
+                    explanation = match_result.get('explanation', '')
+                    
+                    # Store match details for reporting
+                    result['similarity'] = similarity
+                    result['patient_terms'] = list(match_result.get('patient_terms', set()))
+                    result['gene_terms'] = list(match_result.get('gene_terms', set()))
+                    
+                    if evidence_code == 'PP4':
+                        result['applies'] = True
+                        result['confidence'] = 'high' if similarity >= 0.8 else 'medium'
+                        result['details'] = explanation + " (PP4)"
+                    elif evidence_code == 'PP4_supporting':
+                        result['applies'] = True
+                        result['confidence'] = 'medium'
+                        result['details'] = explanation + " (PP4_supporting)"
+                    elif evidence_code == 'BP5':
+                        # PP4 doesn't apply, but note that BP5 might
+                        result['applies'] = False
+                        result['details'] = f"Phenotype does not match {gene}-related disease. See BP5 evaluation."
+                    else:
+                        result['details'] = explanation
+                else:
+                    result['details'] = f"Phenotype matching failed for {gene}"
             else:
-                result['details'] = "No or inconclusive phenotype data"
+                result['details'] = "No patient phenotype data provided for PP4 evaluation"
         else:
-            result['details'] = "No phenotype data or gene information available"
+            result['details'] = "No gene information available for PP4 evaluation"
         
         return result
     
@@ -2497,18 +3228,33 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bp4(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP4 - Computational evidence suggests no impact."""
+        """
+        Evaluate BP4 - Computational evidence suggests no impact.
+        
+        For missense variants, uses the MissenseEvaluator composite score.
+        For other variants, falls back to simple predictor counting.
+        
+        Returns dict with:
+            - applies: bool
+            - strength: 'Supporting', 'Moderate', or 'Strong'
+            - details: str explanation
+            - composite_score: float (for missense variants)
+        """
         result = {'applies': False, 'strength': 'Supporting', 'details': ''}
         
-        # Check in silico predictors
-        insilico_data = variant_data.insilico_data
+        variant_type = variant_data.basic_info.get('variant_type', '').lower()
         
-        # Count benign predictions
+        # Use MissenseEvaluator for missense variants
+        if variant_type == 'missense':
+            return self._evaluate_missense_pp3_bp4(variant_data, direction='benign')
+        
+        # Fallback for non-missense variants: simple predictor counting
+        insilico_data = variant_data.insilico_data or {}
+        
         benign_count = 0
         total_count = 0
         
-        # CRITICAL FIX: Check both prediction labels (_pred) and scores
-        # Check prediction labels first (more explicit)
+        # Check prediction labels first
         pred_mapping = {
             'sift_pred': {'benign': ['T', 'TOLERATED'], 'damaging': ['D', 'DELETERIOUS']},
             'polyphen2_hvar_pred': {'benign': ['B', 'BENIGN'], 'damaging': ['D', 'PROBABLY_DAMAGING', 'P']},
@@ -2526,16 +3272,11 @@ class EvidenceEvaluator:
         # Check scores
         predictor_thresholds = {
             'cadd_phred': 20,
-            'revel_score': 0.5,
             'revel': 0.5,
-            'sift_score': 0.05,  # Higher is more benign (>0.05 = tolerated)
             'sift': 0.05,
-            'polyphen2_score': 0.5,  # Lower is more benign (<0.5 = benign)
             'polyphen2': 0.5,
             'mutation_taster': 0.5,
-            'dann_score': 0.5,
             'dann': 0.5,
-            'fathmm_score': 0.5,  # Higher is more benign
             'fathmm': 0.5,
         }
         
@@ -2543,19 +3284,16 @@ class EvidenceEvaluator:
             score = insilico_data.get(predictor)
             if score is not None:
                 total_count += 1
-                if predictor in ['sift', 'sift_score', 'fathmm', 'fathmm_score']:
-                    # For SIFT and FATHMM, higher values are more benign
+                if predictor in ['sift', 'fathmm']:
                     if score > threshold:
                         benign_count += 1
                 else:
-                    # For other predictors, lower values are more benign
                     if score < threshold:
                         benign_count += 1
         
-        # Apply BP4 if majority of predictors suggest benign
         if total_count > 0:
             benign_ratio = benign_count / total_count
-            if benign_ratio >= 0.7:  # 70% or more predict benign
+            if benign_ratio >= 0.7:
                 result['applies'] = True
                 result['details'] = f"Computational evidence suggests no impact ({benign_count}/{total_count} predictors)"
             else:
@@ -2566,13 +3304,31 @@ class EvidenceEvaluator:
         return result
     
     def _evaluate_bp5(self, variant_data) -> Dict[str, Any]:
-        """Evaluate BP5 - Variant found in a case with an alternate molecular basis for disease."""
-        result = {'applies': False, 'strength': 'Supporting', 'details': ''}
+        """
+        Evaluate BP5 - Variant found in a case with an alternate molecular basis for disease,
+        OR phenotype is inconsistent with gene-associated disease.
+        
+        BP5 can apply in two scenarios:
+        1. Traditional: Alternate pathogenic variant explains the phenotype
+        2. Phenotype-based: Patient phenotypes show very poor overlap with gene-associated disease
+        
+        Phenotype-Based BP5 Threshold:
+            - similarity <= 0.2: BP5 applies (phenotype clearly inconsistent)
+        
+        NOTE: This is an educational approximation using local phenotype data.
+        """
+        result = {
+            'applies': False, 
+            'strength': 'Supporting', 
+            'details': '',
+            'confidence': 'low',
+            'data_source': 'none'
+        }
         
         gene = variant_data.basic_info.get('gene')
         variant_name = variant_data.basic_info.get('variant_name', 'variant')
         
-        # CRITICAL FIX: Check genetic_data for alternate cause information
+        # SCENARIO 1: Check genetic_data for alternate cause information (traditional BP5)
         genetic_data = variant_data.genetic_data or {}
         alternate_found = genetic_data.get('alternate_cause_found', False)
         alternate_variant = genetic_data.get('alternate_variant')
@@ -2585,12 +3341,47 @@ class EvidenceEvaluator:
             
             if 'pathogenic' in alternate_classification.lower() and explains:
                 result['applies'] = True
+                result['confidence'] = 'high'
+                result['data_source'] = 'alternate_variant'
                 result['details'] = f"Alternate molecular basis identified ({alternate_gene} {alternate_classification}) explaining phenotype (BP5)"
                 return result
         
+        # SCENARIO 2: Phenotype-based BP5 using PhenotypeMatcher
+        # Check if patient phenotypes are inconsistent with gene-associated disease
+        if gene:
+            patient_phenotypes = getattr(variant_data, 'patient_phenotypes', None)
+            if not patient_phenotypes:
+                patient_phenotypes = genetic_data.get('patient_phenotypes') or genetic_data.get('phenotypes')
+            
+            if patient_phenotypes:
+                # Use PhenotypeMatcher to check for phenotype inconsistency
+                match_result = self.phenotype_matcher.evaluate_phenotype_match(variant_data, patient_phenotypes)
+                
+                if match_result:
+                    similarity = match_result.get('similarity', 0.0)
+                    evidence_code = match_result.get('evidence_code')
+                    explanation = match_result.get('explanation', '')
+                    
+                    # Store match details
+                    result['similarity'] = similarity
+                    result['patient_terms'] = list(match_result.get('patient_terms', set()))
+                    result['gene_terms'] = list(match_result.get('gene_terms', set()))
+                    
+                    if evidence_code == 'BP5':
+                        result['applies'] = True
+                        result['confidence'] = 'medium'
+                        result['data_source'] = 'phenotype_mismatch'
+                        result['details'] = explanation + " (BP5 - phenotype-based)"
+                        return result
+                    else:
+                        # Phenotypes match or inconclusive - BP5 doesn't apply from phenotype
+                        result['details'] = f"Phenotype consistent with {gene}-related disease (similarity: {similarity:.0%}). "
+        
+        # SCENARIO 3: Interactive or test mode for traditional BP5
         if gene:
             if self.test_mode:
-                result['details'] = f"Test mode: No alternate molecular basis documented for {gene} {variant_name}"
+                if not result['details']:
+                    result['details'] = f"Test mode: No alternate molecular basis documented for {gene} {variant_name}"
                 result['manual_review'] = True
             else:
                 # Interactive evaluation for alternate cause
@@ -2946,3 +3737,174 @@ class EvidenceEvaluator:
                 if result.get('applicable', False) or result.get('applies', False):
                     applied[criterion] = result
         return applied
+    
+    # =========================================================================
+    # Interactive Evidence Collection Methods
+    # =========================================================================
+    def collect_manual_evidence(self, variant_data=None, criteria: Optional[List[str]] = None) -> 'ManualEvidence':
+        """
+        Collect literature-based evidence through interactive prompts.
+        
+        This method initializes the InteractiveEvidenceCollector and guides the user
+        through questions about PS3/BS3, PS4, PP1/BS4, PS1/PM5, and PP5/BP6 criteria.
+        
+        Args:
+            variant_data: Optional VariantData object for context
+            criteria: Optional list of specific criteria to collect 
+                     (e.g., ['PS3_BS3', 'PP1_BS4']). If None, collects all.
+        
+        Returns:
+            ManualEvidence object with collected evidence codes and explanations
+        
+        Example:
+            >>> evaluator = EvidenceEvaluator()
+            >>> manual_ev = evaluator.collect_manual_evidence()
+            >>> print(manual_ev.codes)
+            ['PS3_moderate', 'PP1_supporting']
+        """
+        from core.interactive_evidence import InteractiveEvidenceCollector, ManualEvidence
+        
+        # Initialize collector if not already done
+        if self._interactive_collector is None:
+            self._interactive_collector = InteractiveEvidenceCollector(show_prompts=True)
+        
+        # Collect evidence
+        if criteria:
+            self._manual_evidence = self._interactive_collector.collect_selective(criteria, variant_data)
+        else:
+            self._manual_evidence = self._interactive_collector.collect_all(variant_data)
+        
+        return self._manual_evidence
+    
+    def set_manual_evidence(self, manual_evidence: 'ManualEvidence') -> None:
+        """
+        Set pre-collected manual evidence (useful for testing or batch processing).
+        
+        Args:
+            manual_evidence: ManualEvidence object with codes and explanations
+        """
+        self._manual_evidence = manual_evidence
+    
+    def get_manual_evidence(self) -> Optional['ManualEvidence']:
+        """
+        Get the currently stored manual evidence.
+        
+        Returns:
+            ManualEvidence object or None if not collected
+        """
+        return self._manual_evidence
+    
+    def merge_manual_with_automated(self, automated_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merge manually collected evidence with automated evaluation results.
+        
+        This method takes the automated ACMG criteria evaluation results and
+        supplements them with user-provided literature-based evidence.
+        
+        Manual evidence takes precedence for criteria that require human judgment
+        (PS3, BS3, PS4, PP1, BS4, PS1, PM5, PP5, BP6).
+        
+        Args:
+            automated_results: Results from evaluate_all_criteria()
+        
+        Returns:
+            Updated results dict with manual evidence integrated
+        
+        Example:
+            >>> evaluator = EvidenceEvaluator()
+            >>> auto_results = evaluator.evaluate_all_criteria(variant_data)
+            >>> manual_ev = evaluator.collect_manual_evidence()
+            >>> merged = evaluator.merge_manual_with_automated(auto_results)
+        """
+        if self._manual_evidence is None or not self._manual_evidence.has_evidence():
+            return automated_results
+        
+        # Create a copy of results to avoid mutating original
+        merged = {
+            'pathogenic_criteria': dict(automated_results.get('pathogenic_criteria', {})),
+            'benign_criteria': dict(automated_results.get('benign_criteria', {})),
+            'applied_criteria': dict(automated_results.get('applied_criteria', {})),
+            'evidence_details': dict(automated_results.get('evidence_details', {})),
+            'vampp_score': automated_results.get('vampp_score'),
+            'statistical_tests': automated_results.get('statistical_tests', {}),
+            'manual_evidence': {
+                'codes': self._manual_evidence.codes,
+                'explanations': self._manual_evidence.explanations
+            }
+        }
+        
+        # Map manual evidence codes to ACMG criteria
+        code_to_criterion = {
+            'PS3': 'PS3', 'PS3_strong': 'PS3', 'PS3_moderate': 'PS3', 'PS3_supporting': 'PS3',
+            'BS3': 'BS3', 'BS3_strong': 'BS3', 'BS3_moderate': 'BS3', 'BS3_supporting': 'BS3',
+            'PS4': 'PS4', 'PS4_strong': 'PS4', 'PS4_moderate': 'PS4', 'PS4_supporting': 'PS4',
+            'PP1': 'PP1', 'PP1_strong': 'PP1', 'PP1_moderate': 'PP1', 'PP1_supporting': 'PP1',
+            'BS4': 'BS4', 'BS4_strong': 'BS4', 'BS4_moderate': 'BS4', 'BS4_supporting': 'BS4',
+            'PS1': 'PS1', 'PS1_strong': 'PS1', 'PS1_moderate': 'PS1',
+            'PM5': 'PM5', 'PM5_moderate': 'PM5', 'PM5_supporting': 'PM5',
+            'PP5': 'PP5', 'PP5_supporting': 'PP5',
+            'BP6': 'BP6', 'BP6_supporting': 'BP6',
+        }
+        
+        strength_mapping = {
+            'strong': 'Strong',
+            'moderate': 'Moderate',
+            'supporting': 'Supporting',
+        }
+        
+        # Process each manual evidence code
+        for code in self._manual_evidence.codes:
+            # Determine base criterion and strength
+            parts = code.split('_')
+            base_criterion = parts[0]
+            strength_suffix = parts[1] if len(parts) > 1 else None
+            
+            # Get the ACMG criterion name
+            criterion = code_to_criterion.get(code) or code_to_criterion.get(base_criterion)
+            if not criterion:
+                continue
+            
+            # Determine strength
+            if strength_suffix and strength_suffix.lower() in strength_mapping:
+                strength = strength_mapping[strength_suffix.lower()]
+            else:
+                # Default strengths per criterion
+                default_strengths = {
+                    'PS3': 'Strong', 'BS3': 'Strong',
+                    'PS4': 'Strong',
+                    'PP1': 'Supporting', 'BS4': 'Strong',
+                    'PS1': 'Strong', 'PM5': 'Moderate',
+                    'PP5': 'Supporting', 'BP6': 'Supporting',
+                }
+                strength = default_strengths.get(base_criterion, 'Supporting')
+            
+            # Build the result entry
+            explanation = self._manual_evidence.explanations.get(code, 'User-provided evidence')
+            
+            result_entry = {
+                'applies': True,
+                'strength': strength,
+                'details': explanation,
+                'data_source': 'manual_evidence',
+                'confidence': 'user_provided'
+            }
+            
+            # Determine if pathogenic or benign criterion
+            is_pathogenic = base_criterion.startswith(('PVS', 'PS', 'PM', 'PP'))
+            is_benign = base_criterion.startswith(('BA', 'BS', 'BP'))
+            
+            if is_pathogenic:
+                merged['pathogenic_criteria'][criterion] = result_entry
+                merged['applied_criteria'][criterion] = result_entry
+            elif is_benign:
+                merged['benign_criteria'][criterion] = result_entry
+                merged['applied_criteria'][criterion] = result_entry
+        
+        # Add manual evidence details to evidence_details
+        merged['evidence_details']['manual_evidence'] = {
+            'collected': True,
+            'codes': self._manual_evidence.codes,
+            'count': len(self._manual_evidence.codes)
+        }
+        
+        return merged

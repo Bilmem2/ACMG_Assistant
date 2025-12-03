@@ -1,0 +1,23 @@
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  archived_tests
+  | .kiro
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip_glob = ["archived_tests/*", ".kiro/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Coverage options commented out for now - pytest-cov not installed
+# addopts = "--cov=src --cov-report=html --cov-report=term-missing"

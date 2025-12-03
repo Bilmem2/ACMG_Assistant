@@ -1,9 +1,29 @@
+# =============================================================================
+# Gene-Specific Rules Engine (Utils)
+# =============================================================================
+# Changes in this documentation pass (Dec 2024):
+# - Added clarification about relationship with core/gene_rules_engine.py
+# - Enhanced function docstrings with detailed Args/Returns sections
+# - Added type hints throughout
+#
+# NOTE: This is the FUNCTION-BASED implementation for ClinGen threshold calculations.
+# A CLASS-BASED implementation also exists in core/gene_rules_engine.py which
+# handles rule-based evidence modifications.
+# TODO: Consider merging these two modules in a future refactor.
+# =============================================================================
 """
 Gene-Specific Rules Engine
 ===========================
 
 Dynamically generates gene-specific thresholds based on ClinGen Dosage Sensitivity data.
 Integrates haploinsufficiency (HI) scores with ACMG classification thresholds.
+
+This module provides FUNCTION-BASED utilities for:
+- Calculating gene-specific BA1/BS1/PM2 thresholds based on HI scores
+- Building comprehensive threshold dictionaries from ClinGen TSV data
+- Generating human-readable threshold explanations
+
+See also: core/gene_rules_engine.py for class-based rule application.
 """
 
 from typing import Dict, Any, Optional

@@ -1,24 +1,61 @@
+# =============================================================================
+# Legacy/Experimental API Classes
+# =============================================================================
+# NOTE: The classes below (APICache, RateLimiter, CachedAPIClient) are LEGACY
+# implementations kept for backward compatibility and experimentation.
+# CANONICAL IMPLEMENTATION: Use the APIClient class below for production use.
+# TODO: Evaluate if these legacy classes are still needed; if not, remove them.
+# =============================================================================
 import time
+from typing import Dict, Any, Optional
+
 
 class APICache:
+    """
+    Simple time-based cache for API responses.
+    
+    LEGACY: Consider using APIClient's built-in caching instead.
+    
+    Attributes:
+        cache: Dict storing cached values
+        ttl: Time-to-live in seconds (default: 3600)
+        timestamps: Dict tracking when each key was cached
+    """
     def __init__(self):
-        self.cache = {}
-        self.ttl = 3600  # seconds
-        self.timestamps = {}
-    def get(self, key):
+        self.cache: Dict[str, Any] = {}
+        self.ttl: int = 3600  # seconds
+        self.timestamps: Dict[str, float] = {}
+        
+    def get(self, key: str) -> Optional[Any]:
+        """Get cached value if not expired."""
         if key in self.cache and (time.time() - self.timestamps[key]) < self.ttl:
             return self.cache[key]
         return None
-    def set(self, key, value):
+        
+    def set(self, key: str, value: Any) -> None:
+        """Cache a value with current timestamp."""
         self.cache[key] = value
         self.timestamps[key] = time.time()
 
+
 class RateLimiter:
-    def __init__(self, max_calls=10, period=1):
+    """
+    Simple rate limiter for API calls.
+    
+    LEGACY: Consider using APIClient's built-in retry logic instead.
+    
+    Attributes:
+        max_calls: Maximum calls allowed per period
+        period: Time period in seconds
+        calls: List of timestamps for recent calls
+    """
+    def __init__(self, max_calls: int = 10, period: int = 1):
         self.max_calls = max_calls
         self.period = period
-        self.calls = []
-    def allow(self):
+        self.calls: list = []
+        
+    def allow(self) -> bool:
+        """Check if a new call is allowed under rate limit."""
         now = time.time()
         self.calls = [t for t in self.calls if now - t < self.period]
         if len(self.calls) < self.max_calls:
@@ -26,11 +63,24 @@ class RateLimiter:
             return True
         return False
 
+
 class CachedAPIClient:
+    """
+    Simple cached API client with rate limiting.
+    
+    LEGACY: Use the main APIClient class below for production use.
+    This class is kept for backward compatibility with existing code.
+    
+    Attributes:
+        cache: APICache instance
+        rate_limiter: RateLimiter instance
+    """
     def __init__(self):
         self.cache = APICache()
         self.rate_limiter = RateLimiter()
-    def get_variant_annotations(self, variant_key):
+        
+    def get_variant_annotations(self, variant_key: str) -> Dict[str, Any]:
+        """Get variant annotations with caching and rate limiting."""
         cached = self.cache.get(variant_key)
         if cached:
             return cached
@@ -39,10 +89,14 @@ class CachedAPIClient:
         result = self._fetch_variant_annotations(variant_key)
         self.cache.set(variant_key, result)
         return result
-    def _fetch_variant_annotations(self, variant_key):
+        
+    def _fetch_variant_annotations(self, variant_key: str) -> Dict[str, Any]:
+        """Fetch annotations (placeholder implementation)."""
         # Placeholder: Simulate annotation
         return {"variant": variant_key, "annotation": "simulated_result"}
-    def batch_annotate_variants(self, variant_list):
+        
+    def batch_annotate_variants(self, variant_list: list) -> Dict[str, Any]:
+        """Batch annotate multiple variants with caching."""
         cached_results = {}
         uncached_variants = []
         for variant in variant_list:
@@ -1991,3 +2045,374 @@ class APIClient:
 
 
 
+    def get_alphamissense_score(self, gene_symbol: str, hgvs_protein: str) -> Dict[str, Any]:
+        """
+        Get AlphaMissense pathogenicity score for a missense variant.
+        
+        Args:
+            gene_symbol: Gene symbol (e.g., 'BRCA1')
+            hgvs_protein: Protein change in HGVS format (e.g., 'p.Arg412Trp')
+            
+        Returns:
+            Dict containing AlphaMissense score and metadata
+        """
+        from config.constants import API_SETTINGS
+        
+        if not API_SETTINGS.get('enabled', True):
+            return {'error': 'API integration is disabled', 'source': 'AlphaMissense'}
+        
+        cache_key = f"alphamissense_{gene_symbol}_{hgvs_protein}"
+        cached_result = self._get_cached_response(cache_key)
+        if cached_result:
+            return cached_result
+        
+        try:
+            # AlphaMissense uses UniProt ID, so we need to convert gene symbol
+            # For now, we'll use a simplified approach with common genes
+            uniprot_mapping = {
+                'BRCA1': 'P38398',
+                'BRCA2': 'P51587', 
+                'TP53': 'P04637',
+                'CFTR': 'P13569',
+                'MTHFR': 'P42898'
+            }
+            
+            uniprot_id = uniprot_mapping.get(gene_symbol.upper())
+            if not uniprot_id:
+                return {
+                    'error': f'UniProt mapping not available for {gene_symbol}',
+                    'source': 'AlphaMissense',
+                    'suggestion': 'Check AlphaMissense database manually at https://alphamissense.hegelab.org/'
+                }
+            
+            # Extract position and amino acid change from HGVS
+            import re
+            match = re.match(r'p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2})', hgvs_protein)
+            if not match:
+                return {
+                    'error': f'Invalid HGVS protein format: {hgvs_protein}',
+                    'source': 'AlphaMissense'
+                }
+            
+            ref_aa, position, alt_aa = match.groups()
+            
+            # AlphaMissense API call (simplified - in reality this would need proper API integration)
+            result = {
+                'gene': gene_symbol,
+                'uniprot_id': uniprot_id,
+                'position': position,
+                'ref_aa': ref_aa,
+                'alt_aa': alt_aa,
+                'alphamissense_score': None,  # Would be fetched from API
+                'confidence': 'medium',
+                'source': 'AlphaMissense',
+                'url': f'https://alphamissense.hegelab.org/gene/{uniprot_id}',
+                'manual_lookup_required': True,
+                'instructions': f'Visit AlphaMissense database and search for {gene_symbol} {hgvs_protein}'
+            }
+            
+            self._cache_response(cache_key, result)
+            return result
+            
+        except Exception as e:
+            error_result = {
+                'error': f'AlphaMissense lookup failed: {str(e)}',
+                'source': 'AlphaMissense'
+            }
+            return error_result
+
+    def get_conservation_scores(self, chromosome: str, position: int, 
+                               ref_allele: str, alt_allele: str) -> Dict[str, Any]:
+        """
+        Get conservation scores (PhyloP, phastCons, GERP++) for a variant.
+        
+        Args:
+            chromosome: Chromosome (e.g., '17')
+            position: Genomic position
+            ref_allele: Reference allele
+            alt_allele: Alternate allele
+            
+        Returns:
+            Dict containing conservation scores
+        """
+        from config.constants import API_SETTINGS
+        
+        if not API_SETTINGS.get('enabled', True):
+            return {'error': 'API integration is disabled', 'source': 'Conservation'}
+        
+        cache_key = f"conservation_{chromosome}_{position}_{ref_allele}_{alt_allele}"
+        cached_result = self._get_cached_response(cache_key)
+        if cached_result:
+            return cached_result
+        
+        try:
+            # Use Ensembl VEP API for conservation scores
+            vep_url = f"{API_ENDPOINTS['ensembl_rest']}/vep/human/region/{chromosome}:{position}-{position}/{alt_allele}"
+            
+            response = requests.get(
+                vep_url,
+                params={
+                    'content-type': 'application/json',
+                    'Conservation': '1',
+                    'GERP': '1'
+                },
+                timeout=API_SETTINGS.get('timeout', 15),
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            if response.status_code == 200:
+                vep_data = response.json()
+                
+                conservation_scores = {}
+                if vep_data and len(vep_data) > 0:
+                    transcript_consequences = vep_data[0].get('transcript_consequences', [])
+                    if transcript_consequences:
+                        # Get conservation scores from first transcript
+                        tc = transcript_consequences[0]
+                        
+                        # Extract available conservation scores
+                        if 'phylop_score' in tc:
+                            conservation_scores['phylop'] = tc['phylop_score']
+                        if 'phastcons_score' in tc:
+                            conservation_scores['phastcons'] = tc['phastcons_score']
+                        if 'gerp_score' in tc:
+                            conservation_scores['gerp'] = tc['gerp_score']
+                
+                result = {
+                    'chromosome': chromosome,
+                    'position': position,
+                    'ref_allele': ref_allele,
+                    'alt_allele': alt_allele,
+                    'conservation_scores': conservation_scores,
+                    'source': 'Ensembl VEP',
+                    'confidence': 'high' if conservation_scores else 'low',
+                    'manual_lookup_required': not conservation_scores,
+                    'instructions': 'Use UCSC Genome Browser or Ensembl for manual conservation score lookup' if not conservation_scores else None
+                }
+                
+                self._cache_response(cache_key, result)
+                return result
+            else:
+                return {
+                    'error': f'VEP API returned status {response.status_code}',
+                    'source': 'Conservation',
+                    'manual_lookup_required': True,
+                    'instructions': 'Use UCSC Genome Browser PhyloP/phastCons tracks for manual lookup'
+                }
+                
+        except Exception as e:
+            error_result = {
+                'error': f'Conservation score lookup failed: {str(e)}',
+                'source': 'Conservation',
+                'manual_lookup_required': True,
+                'instructions': 'Use UCSC Genome Browser or Ensembl for manual conservation score lookup'
+            }
+            return error_result
+
+    def get_domain_annotations(self, gene_symbol: str, protein_position: int = None) -> Dict[str, Any]:
+        """
+        Get protein domain annotations for PM1 evaluation.
+        
+        Args:
+            gene_symbol: Gene symbol (e.g., 'BRCA1')
+            protein_position: Protein position (optional)
+            
+        Returns:
+            Dict containing domain information
+        """
+        from config.constants import API_SETTINGS
+        
+        if not API_SETTINGS.get('enabled', True):
+            return {'error': 'API integration is disabled', 'source': 'Domains'}
+        
+        cache_key = f"domains_{gene_symbol}_{protein_position or 'all'}"
+        cached_result = self._get_cached_response(cache_key)
+        if cached_result:
+            return cached_result
+        
+        try:
+            # Use Ensembl to get protein domains
+            # First get the gene ID
+            gene_url = f"{API_ENDPOINTS['ensembl_rest']}/lookup/symbol/homo_sapiens/{gene_symbol}"
+            
+            response = requests.get(
+                gene_url,
+                params={'content-type': 'application/json', 'expand': '1'},
+                timeout=API_SETTINGS.get('timeout', 15),
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            if response.status_code == 200:
+                gene_data = response.json()
+                
+                # Get canonical transcript
+                canonical_transcript = None
+                if 'Transcript' in gene_data:
+                    for transcript in gene_data['Transcript']:
+                        if transcript.get('is_canonical') == 1:
+                            canonical_transcript = transcript
+                            break
+                
+                if canonical_transcript and 'Translation' in canonical_transcript:
+                    translation_id = canonical_transcript['Translation']['id']
+                    
+                    # Get protein domains
+                    domain_url = f"{API_ENDPOINTS['ensembl_rest']}/overlap/translation/{translation_id}"
+                    
+                    domain_response = requests.get(
+                        domain_url,
+                        params={
+                            'content-type': 'application/json',
+                            'feature': 'protein_feature'
+                        },
+                        timeout=API_SETTINGS.get('timeout', 15),
+                        headers={'Content-Type': 'application/json'}
+                    )
+                    
+                    if domain_response.status_code == 200:
+                        domains = domain_response.json()
+                        
+                        # Filter and organize domain information
+                        functional_domains = []
+                        hotspot_regions = []
+                        
+                        for domain in domains:
+                            if domain.get('type') in ['pfam', 'interpro', 'smart']:
+                                domain_info = {
+                                    'name': domain.get('description', 'Unknown'),
+                                    'start': domain.get('start'),
+                                    'end': domain.get('end'),
+                                    'type': domain.get('type'),
+                                    'id': domain.get('id')
+                                }
+                                
+                                # Check if position falls within this domain
+                                if protein_position and domain.get('start') and domain.get('end'):
+                                    if domain['start'] <= protein_position <= domain['end']:
+                                        hotspot_regions.append(domain_info)
+                                
+                                functional_domains.append(domain_info)
+                        
+                        result = {
+                            'gene': gene_symbol,
+                            'protein_position': protein_position,
+                            'functional_domains': functional_domains,
+                            'hotspot_regions': hotspot_regions,
+                            'is_in_functional_domain': len(hotspot_regions) > 0,
+                            'source': 'Ensembl',
+                            'confidence': 'high',
+                            'manual_lookup_required': False
+                        }
+                        
+                        self._cache_response(cache_key, result)
+                        return result
+            
+            # Fallback result
+            return {
+                'error': 'Could not retrieve domain information',
+                'source': 'Domains',
+                'manual_lookup_required': True,
+                'instructions': f'Check UniProt database for {gene_symbol} domain annotations'
+            }
+            
+        except Exception as e:
+            error_result = {
+                'error': f'Domain lookup failed: {str(e)}',
+                'source': 'Domains',
+                'manual_lookup_required': True,
+                'instructions': f'Check UniProt database for {gene_symbol} domain annotations'
+            }
+            return error_result
+
+    def auto_enrich_variant_data(self, variant_data) -> Dict[str, Any]:
+        """
+        Automatically enrich variant data with all available API sources.
+        
+        Args:
+            variant_data: VariantData object
+            
+        Returns:
+            Dict containing all enriched data
+        """
+        enriched_data = {
+            'alphamissense': None,
+            'conservation': None,
+            'domains': None,
+            'errors': []
+        }
+        
+        basic_info = variant_data.basic_info
+        gene = basic_info.get('gene')
+        chromosome = basic_info.get('chromosome')
+        position = basic_info.get('position')
+        ref_allele = basic_info.get('ref_allele')
+        alt_allele = basic_info.get('alt_allele')
+        hgvs_protein = basic_info.get('hgvs_protein')
+        
+        print(f"\n{COLORAMA_COLORS['CYAN']}🤖 Auto-enriching variant data...{COLORAMA_COLORS['RESET']}")
+        
+        # 1. AlphaMissense (for missense variants)
+        if gene and hgvs_protein and basic_info.get('variant_type') == 'missense':
+            print(f"- Fetching AlphaMissense score for {gene} {hgvs_protein}...")
+            try:
+                alphamissense_data = self.get_alphamissense_score(gene, hgvs_protein)
+                enriched_data['alphamissense'] = alphamissense_data
+                
+                if alphamissense_data.get('manual_lookup_required'):
+                    print(f"  {COLORAMA_COLORS['YELLOW']}⚠️  Manual lookup required: {alphamissense_data.get('instructions')}{COLORAMA_COLORS['RESET']}")
+                else:
+                    print(f"  {COLORAMA_COLORS['GREEN']}✓ AlphaMissense data retrieved{COLORAMA_COLORS['RESET']}")
+                    
+            except Exception as e:
+                enriched_data['errors'].append(f'AlphaMissense: {str(e)}')
+                print(f"  {COLORAMA_COLORS['RED']}❌ AlphaMissense lookup failed: {e}{COLORAMA_COLORS['RESET']}")
+        
+        # 2. Conservation scores
+        if chromosome and position and ref_allele and alt_allele:
+            print(f"- Fetching conservation scores for {chromosome}:{position}...")
+            try:
+                conservation_data = self.get_conservation_scores(chromosome, position, ref_allele, alt_allele)
+                enriched_data['conservation'] = conservation_data
+                
+                if conservation_data.get('manual_lookup_required'):
+                    print(f"  {COLORAMA_COLORS['YELLOW']}⚠️  Manual lookup required: {conservation_data.get('instructions')}{COLORAMA_COLORS['RESET']}")
+                else:
+                    scores = conservation_data.get('conservation_scores', {})
+                    print(f"  {COLORAMA_COLORS['GREEN']}✓ Conservation scores: {list(scores.keys())}{COLORAMA_COLORS['RESET']}")
+                    
+            except Exception as e:
+                enriched_data['errors'].append(f'Conservation: {str(e)}')
+                print(f"  {COLORAMA_COLORS['RED']}❌ Conservation lookup failed: {e}{COLORAMA_COLORS['RESET']}")
+        
+        # 3. Domain annotations
+        if gene:
+            print(f"- Fetching domain annotations for {gene}...")
+            try:
+                # Extract protein position if available
+                protein_position = None
+                if hgvs_protein:
+                    import re
+                    match = re.search(r'(\d+)', hgvs_protein)
+                    if match:
+                        protein_position = int(match.group(1))
+                
+                domain_data = self.get_domain_annotations(gene, protein_position)
+                enriched_data['domains'] = domain_data
+                
+                if domain_data.get('manual_lookup_required'):
+                    print(f"  {COLORAMA_COLORS['YELLOW']}⚠️  Manual lookup required: {domain_data.get('instructions')}{COLORAMA_COLORS['RESET']}")
+                else:
+                    domains_count = len(domain_data.get('functional_domains', []))
+                    hotspots = len(domain_data.get('hotspot_regions', []))
+                    print(f"  {COLORAMA_COLORS['GREEN']}✓ Found {domains_count} domains, {hotspots} hotspot regions{COLORAMA_COLORS['RESET']}")
+                    
+            except Exception as e:
+                enriched_data['errors'].append(f'Domains: {str(e)}')
+                print(f"  {COLORAMA_COLORS['RED']}❌ Domain lookup failed: {e}{COLORAMA_COLORS['RESET']}")
+        
+        if enriched_data['errors']:
+            print(f"\n{COLORAMA_COLORS['YELLOW']}⚠️  Some auto-enrichment failed. Manual lookup may be required.{COLORAMA_COLORS['RESET']}")
+        else:
+            print(f"\n{COLORAMA_COLORS['GREEN']}✅ Auto-enrichment completed successfully!{COLORAMA_COLORS['RESET']}")
+        
+        return enriched_data

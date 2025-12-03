@@ -1,16 +1,56 @@
+# =============================================================================
+# Statistical Utilities Module
+# =============================================================================
+# Changes in this documentation pass (Dec 2024):
+# - Enhanced module docstring with usage examples
+# - Added comprehensive docstrings to all public methods
+# - Added type hints throughout
+# - Documented threshold constants and their clinical significance
+# =============================================================================
 """
 Statistical Utilities Module
 ============================
 
-Provides statistical analysis functions for evidence evaluation.
+Provides statistical analysis functions for ACMG evidence evaluation,
+including Fisher's exact test for case-control data (PS4) and LOD score
+calculation for segregation analysis (PP1/BS4).
+
+Usage:
+    analyzer = StatisticalAnalyzer()
+    
+    # Case-control analysis for PS4
+    result = analyzer.calculate_fishers_exact(
+        cases_with=15, cases_total=100,
+        controls_with=2, controls_total=1000
+    )
+    
+    # Segregation analysis for PP1/BS4
+    families = [
+        {'affected_with': 3, 'affected_total': 3, 'unaffected_with': 0, 'unaffected_total': 2},
+        {'affected_with': 2, 'affected_total': 2, 'unaffected_with': 0, 'unaffected_total': 1},
+    ]
+    lod_result = analyzer.calculate_lod_score(families)
 """
 
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from scipy import stats
 
 
 class StatisticalAnalyzer:
+    """
+    Performs statistical analyses for ACMG criteria evaluation.
+    
+    Provides methods for:
+    - Fisher's exact test for case-control studies (PS4 criterion)
+    - LOD score calculation for segregation analysis (PP1/BS4 criteria)
+    - Sample size adequacy assessment
+    
+    Attributes:
+        min_lod_supporting: Minimum LOD score for supporting evidence (default: 1.5)
+        min_lod_strong: Minimum LOD score for strong evidence (default: 3.0)
+        min_families: Minimum number of families for segregation analysis (default: 3)
+    """
     """Performs statistical analyses for ACMG criteria evaluation."""
     
     def __init__(self):
@@ -102,16 +142,31 @@ class StatisticalAnalyzer:
         else:
             return f"No significant enrichment in cases (OR={odds_ratio:.2f}, p={p_value:.2e})"
     
-    def calculate_lod_score(self, families_data: list) -> Dict:
+    def calculate_lod_score(self, families_data: List[Dict[str, int]]) -> Dict[str, Any]:
         """
         Calculate LOD score for segregation analysis (PP1/BS4).
         
+        LOD (logarithm of odds) score measures the likelihood that a variant
+        co-segregates with disease in families. Positive scores support
+        pathogenicity (PP1), negative scores support benign classification (BS4).
+        
         Args:
-            families_data: List of dicts with 'affected_with', 'affected_total',
-                          'unaffected_with', 'unaffected_total'
+            families_data: List of family data dicts, each containing:
+                - affected_with: Number of affected individuals with variant
+                - affected_total: Total number of affected individuals
+                - unaffected_with: Number of unaffected individuals with variant
+                - unaffected_total: Total number of unaffected individuals
         
         Returns:
-            Dict with lod_score, strength, confidence, and interpretation
+            Dict containing:
+                - valid (bool): Whether calculation was successful
+                - lod_score (float): Combined LOD score across families
+                - family_count (int): Number of families analyzed
+                - individual_lods (list): LOD scores per family
+                - strength (str): Evidence strength classification
+                - applies (bool): Whether criterion threshold is met
+                - confidence (str): Confidence level based on family count
+                - interpretation (str): Human-readable interpretation
         """
         if not families_data or len(families_data) < self.min_families:
             return {

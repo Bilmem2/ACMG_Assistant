@@ -468,7 +468,8 @@ class InputHandler:
         """
         print("\n🌍 POPULATION FREQUENCY DATA")
         print("-" * 30)
-        print("Enter allele frequencies from population databases.")
+        print(f"{COLORAMA_COLORS['GREEN']}Population data is fetched automatically from APIs when available.{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}You may provide manual values to supplement or override API data.{COLORAMA_COLORS['RESET']}")
         print("💡 Use gnomAD.broadinstitute.org or Varsome.com for quick lookup.")
         print("💡 Lower frequencies support pathogenicity.")
         print("💡 Use 'NA' or leave empty if data is not available.")
@@ -540,12 +541,13 @@ class InputHandler:
         """
         print("\n🤖 IN SILICO PREDICTION SCORES")
         print("-" * 30)
-        print("Enter prediction scores from various algorithms.")
+        print(f"{COLORAMA_COLORS['GREEN']}Predictor scores are fetched automatically from multi-source APIs{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['GREEN']}(CADD, REVEL, BayesDel, AlphaMissense, etc.) when available.{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}You may provide manual values to supplement or override API data.{COLORAMA_COLORS['RESET']}")
         print("💡 Use Varsome.com or similar tools to get these scores quickly.")
         print("💡 Leave empty if score is not available.")
-        print("💡 Higher scores usually = more pathogenic (except SIFT)")
+        print("💡 Higher scores usually = more pathogenic (except SIFT).")
         print("💡 You can skip rarely used predictors if time is limited.")
-        print("💡 Some predictors have both raw and ranked scores - choose accordingly.")
         
         if self.test_mode and self.selected_scenario:
             scenario_data = TEST_SCENARIOS[self.selected_scenario]
@@ -1190,23 +1192,6 @@ class InputHandler:
             aliases=functional_aliases
         )
         
-        # Phenotype match
-        print("\n📊 Phenotype Match Information:")
-        print("   Specific match = Phenotype highly specific for this gene")
-        print("   Partial match = Some phenotype overlap")
-        print("   No match = Phenotype doesn't match gene")
-        
-        phenotype_choices = ['specific_match', 'partial_match', 'no_match', 'unknown']
-        phenotype_aliases = {
-            'spec': 'specific_match', 'part': 'partial_match', 'none': 'no_match'
-        }
-        functional_data['phenotype_match'] = self._prompt_choice(
-            "Phenotype match: ",
-            choices=phenotype_choices,
-            required=False,
-            aliases=phenotype_aliases
-        )
-        
         # Case-control data
         print("\n📊 Case-Control Data Information:")
         print("   This is for research studies comparing patients vs controls")
@@ -1587,3 +1572,97 @@ class InputHandler:
             clean_value = 'MT'
         
         return clean_value
+    
+    def collect_patient_phenotypes(self) -> Optional[list]:
+        """
+        Collect patient phenotypes for phenotype-based evidence (PP4/BP5).
+        
+        This method offers three input modes:
+        1. HPO IDs (e.g., HP:0001250, HP:0001249)
+        2. Free-text phenotype phrases (e.g., 'seizures, developmental delay')
+        3. Skip phenotype-based evidence
+        
+        Returns:
+            List of phenotype terms (HPO IDs or text), or None if skipped.
+        """
+        if self.test_mode:
+            # In test mode, phenotypes come from test scenarios
+            return None
+        
+        print(f"\n{COLORAMA_COLORS['CYAN']}{'='*60}{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['CYAN']}{COLORAMA_COLORS['BOLD']}🧬 PATIENT PHENOTYPE INPUT (Optional){COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['CYAN']}{'='*60}{COLORAMA_COLORS['RESET']}")
+        
+        print(f"\n{COLORAMA_COLORS['WHITE']}Phenotype data enables automatic PP4/BP5 evidence evaluation.{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}The system will match patient phenotypes against gene-specific{COLORAMA_COLORS['RESET']}")
+        print(f"{COLORAMA_COLORS['WHITE']}phenotype profiles using local HPO-based matching.{COLORAMA_COLORS['RESET']}")
+        
+        print(f"\n{COLORAMA_COLORS['YELLOW']}Choose input method:{COLORAMA_COLORS['RESET']}")
+        print(f"  1) Enter HPO IDs (e.g., HP:0001250, HP:0001249)")
+        print(f"  2) Enter free-text phenotype phrases (e.g., 'seizures, breast cancer')")
+        print(f"  3) Skip phenotype-based evidence")
+        
+        while True:
+            choice = input(f"\n{COLORAMA_COLORS['GREEN']}Choice [1/2/3, default: 3]: {COLORAMA_COLORS['RESET']}").strip()
+            
+            if choice == '' or choice == '3':
+                print(f"{COLORAMA_COLORS['CYAN']}Skipping phenotype input - PP4/BP5 will not be evaluated automatically.{COLORAMA_COLORS['RESET']}")
+                return None
+            
+            elif choice == '1':
+                # HPO ID input
+                print(f"\n{COLORAMA_COLORS['CYAN']}Enter HPO IDs separated by commas.{COLORAMA_COLORS['RESET']}")
+                print(f"{COLORAMA_COLORS['WHITE']}Example: HP:0001250, HP:0001249, HP:0003002{COLORAMA_COLORS['RESET']}")
+                print(f"{COLORAMA_COLORS['WHITE']}Find HPO IDs at: https://hpo.jax.org/{COLORAMA_COLORS['RESET']}")
+                
+                hpo_input = input(f"\n{COLORAMA_COLORS['GREEN']}HPO IDs: {COLORAMA_COLORS['RESET']}").strip()
+                
+                if not hpo_input:
+                    print(f"{COLORAMA_COLORS['YELLOW']}No HPO IDs entered - skipping phenotype input.{COLORAMA_COLORS['RESET']}")
+                    return None
+                
+                # Parse and validate HPO IDs
+                hpo_terms = [term.strip() for term in hpo_input.split(',') if term.strip()]
+                valid_terms = []
+                
+                import re
+                hpo_pattern = re.compile(r'^HP:\d{7}$')
+                
+                for term in hpo_terms:
+                    term_upper = term.upper()
+                    if hpo_pattern.match(term_upper):
+                        valid_terms.append(term_upper)
+                    else:
+                        print(f"{COLORAMA_COLORS['YELLOW']}⚠ Invalid HPO ID format: {term} (expected HP:NNNNNNN){COLORAMA_COLORS['RESET']}")
+                
+                if valid_terms:
+                    print(f"{COLORAMA_COLORS['GREEN']}✓ Collected {len(valid_terms)} HPO terms: {', '.join(valid_terms)}{COLORAMA_COLORS['RESET']}")
+                    return valid_terms
+                else:
+                    print(f"{COLORAMA_COLORS['RED']}No valid HPO IDs entered. Try again or choose option 3 to skip.{COLORAMA_COLORS['RESET']}")
+                    continue
+            
+            elif choice == '2':
+                # Free-text phenotype input
+                print(f"\n{COLORAMA_COLORS['CYAN']}Enter phenotype descriptions separated by commas.{COLORAMA_COLORS['RESET']}")
+                print(f"{COLORAMA_COLORS['WHITE']}Example: breast cancer, seizures, developmental delay{COLORAMA_COLORS['RESET']}")
+                print(f"{COLORAMA_COLORS['WHITE']}The system will attempt to map these to HPO terms.{COLORAMA_COLORS['RESET']}")
+                
+                text_input = input(f"\n{COLORAMA_COLORS['GREEN']}Phenotypes: {COLORAMA_COLORS['RESET']}").strip()
+                
+                if not text_input:
+                    print(f"{COLORAMA_COLORS['YELLOW']}No phenotypes entered - skipping phenotype input.{COLORAMA_COLORS['RESET']}")
+                    return None
+                
+                # Parse phenotype phrases
+                phenotype_terms = [term.strip() for term in text_input.split(',') if term.strip()]
+                
+                if phenotype_terms:
+                    print(f"{COLORAMA_COLORS['GREEN']}✓ Collected {len(phenotype_terms)} phenotype terms: {', '.join(phenotype_terms)}{COLORAMA_COLORS['RESET']}")
+                    return phenotype_terms
+                else:
+                    print(f"{COLORAMA_COLORS['RED']}No phenotype terms entered. Try again or choose option 3 to skip.{COLORAMA_COLORS['RESET']}")
+                    continue
+            
+            else:
+                print(f"{COLORAMA_COLORS['RED']}Please enter 1, 2, or 3.{COLORAMA_COLORS['RESET']}")

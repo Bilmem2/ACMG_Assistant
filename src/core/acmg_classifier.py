@@ -1,5 +1,52 @@
+# =============================================================================
+# Changes in this documentation pass (Dec 2024):
+# - Added docstrings to ConflictResolver and WeightedACMGClassifier classes
+# - Added type hints to public methods
+# - Clarified relationship between weighted and standard classifiers
+# =============================================================================
+"""
+ACMG Classifier Module
+====================
+
+This module implements the ACMG classification logic based on
+evidence criteria evaluation results.
+"""
+
+from typing import Dict, List, Optional, Any, Tuple
+from config.constants import CLASSIFICATION_RULES, EVIDENCE_WEIGHTS
+
+# =============================================================================
+# Alternative/Experimental Classifiers
+# =============================================================================
+# NOTE: ConflictResolver and WeightedACMGClassifier below are ALTERNATIVE
+# implementations that use weighted scoring. The CANONICAL implementation
+# is the ACMGClassifier class further below, which follows standard ACMG rules.
+# TODO: Consider consolidating these into a single configurable classifier.
+# =============================================================================
+
+
 class ConflictResolver:
-    def resolve_conflict(self, pathogenic_evidence, benign_evidence, pathogenic_score, benign_score):
+    """
+    Resolves conflicts between pathogenic and benign evidence.
+    
+    Used by WeightedACMGClassifier when both pathogenic and benign
+    evidence are present for a variant.
+    """
+    
+    def resolve_conflict(self, pathogenic_evidence: list, benign_evidence: list,
+                        pathogenic_score: float, benign_score: float) -> str:
+        """
+        Resolve classification conflict based on weighted scores.
+        
+        Args:
+            pathogenic_evidence: List of pathogenic criteria codes
+            benign_evidence: List of benign criteria codes
+            pathogenic_score: Weighted pathogenic score
+            benign_score: Weighted benign score
+            
+        Returns:
+            str: Resolved classification with conflict notation
+        """
         if pathogenic_score > benign_score:
             return "Likely Pathogenic (conflict resolved)"
         elif benign_score > pathogenic_score:
@@ -7,12 +54,32 @@ class ConflictResolver:
         else:
             return "Uncertain Significance (conflict unresolved)"
 
+
 class WeightedACMGClassifier:
+    """
+    Alternative ACMG classifier using weighted evidence scoring.
+    
+    This classifier assigns numerical weights to evidence criteria
+    and calculates aggregate scores for classification. This is an
+    EXPERIMENTAL approach - use ACMGClassifier for standard ACMG rules.
+    
+    Attributes:
+        evidence_weights: Dict mapping evidence prefixes to weights
+        conflict_resolver: ConflictResolver instance for handling conflicts
+    """
+    
     def __init__(self):
+        """Initialize the weighted classifier with default weights."""
         self.evidence_weights = self._load_evidence_weights()
         self.conflict_resolver = ConflictResolver()
     
-    def _load_evidence_weights(self):
+    def _load_evidence_weights(self) -> dict:
+        """
+        Load evidence weights for scoring.
+        
+        Returns:
+            Dict mapping evidence type prefixes to numerical weights
+        """
         # Example weights, can be loaded from config file
         return {
             'PVS': 8.0,
@@ -24,11 +91,29 @@ class WeightedACMGClassifier:
             'BP': 1.0
         }
     
-    def _get_evidence_confidence(self, evidence):
+    def _get_evidence_confidence(self, evidence: str) -> float:
+        """
+        Get confidence multiplier for evidence.
+        
+        Args:
+            evidence: Evidence criterion code (e.g., 'PVS1', 'PM2')
+            
+        Returns:
+            float: Confidence multiplier (currently always 1.0)
+        """
         # Placeholder: always 1.0, can be extended for real confidence
         return 1.0
     
-    def _calculate_weighted_score(self, evidence_list):
+    def _calculate_weighted_score(self, evidence_list: list) -> float:
+        """
+        Calculate weighted score for a list of evidence criteria.
+        
+        Args:
+            evidence_list: List of evidence criterion codes
+            
+        Returns:
+            float: Total weighted score
+        """
         score = 0
         for evidence in evidence_list:
             base_weight = self.evidence_weights.get(evidence[:3], 1.0)
@@ -36,7 +121,16 @@ class WeightedACMGClassifier:
             score += base_weight * confidence
         return score
     
-    def classify_variant_weighted(self, evidence_list):
+    def classify_variant_weighted(self, evidence_list: list) -> str:
+        """
+        Classify variant using weighted evidence scoring.
+        
+        Args:
+            evidence_list: List of all applied evidence criteria
+            
+        Returns:
+            str: Classification result
+        """
         pathogenic_evidence = [e for e in evidence_list if e.startswith(('PVS', 'PS', 'PM', 'PP'))]
         benign_evidence = [e for e in evidence_list if e.startswith(('BA', 'BS', 'BP'))]
         pathogenic_score = self._calculate_weighted_score(pathogenic_evidence)
@@ -47,23 +141,23 @@ class WeightedACMGClassifier:
             )
         return self._determine_classification(pathogenic_score, benign_score)
     
-    def _determine_classification(self, pathogenic_score, benign_score):
+    def _determine_classification(self, pathogenic_score: float, benign_score: float) -> str:
+        """
+        Determine classification based on weighted scores.
+        
+        Args:
+            pathogenic_score: Total pathogenic evidence score
+            benign_score: Total benign evidence score
+            
+        Returns:
+            str: Classification result
+        """
         if pathogenic_score > benign_score and pathogenic_score >= 4:
             return "Pathogenic"
         elif benign_score > pathogenic_score and benign_score >= 4:
             return "Benign"
         else:
             return "Uncertain Significance"
-"""
-ACMG Classifier Module
-====================
-
-This module implements the ACMG classification logic based on
-evidence criteria evaluation results.
-"""
-
-from typing import Dict, List, Optional, Any, Tuple
-from config.constants import CLASSIFICATION_RULES, EVIDENCE_WEIGHTS
 
 
 class ACMGClassifier:

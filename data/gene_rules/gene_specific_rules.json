@@ -1,0 +1,194 @@
+{
+  "BRCA1": {
+    "hotspot_regions": [
+      {
+        "start": 1,
+        "end": 100,
+        "evidence_level": 4,
+        "description": "RING domain",
+        "pubmed_refs": ["12345678", "87654321"],
+        "pathogenicity_likelihood": 0.8
+      },
+      {
+        "start": 1650,
+        "end": 1863,
+        "evidence_level": 5,
+        "description": "BRCT domain",
+        "pubmed_refs": ["11111111", "22222222"],
+        "pathogenicity_likelihood": 0.9
+      }
+    ],
+    "critical_regions": [
+      {
+        "start": 1,
+        "end": 100,
+        "type": "RING_domain",
+        "functional_impact": "high",
+        "description": "E3 ubiquitin ligase activity"
+      },
+      {
+        "start": 1650,
+        "end": 1863,
+        "type": "BRCT_domain",
+        "functional_impact": "high",
+        "description": "Protein interaction domain"
+      }
+    ],
+    "classification_rules": [
+      {
+        "condition": "missense_in_ring_domain",
+        "position_range": [1, 100],
+        "action": "upgrade_PM1_to_PM2",
+        "evidence_level": 4,
+        "rationale": "RING domain is critical for E3 ligase activity"
+      },
+      {
+        "condition": "nonsense_before_exon_20",
+        "position_range": [1, 5000],
+        "action": "apply_PVS1",
+        "evidence_level": 5,
+        "rationale": "Leads to nonsense-mediated decay"
+      },
+      {
+        "condition": "missense_in_brct_domain",
+        "position_range": [1650, 1863],
+        "action": "apply_PM1",
+        "evidence_level": 4,
+        "rationale": "BRCT domain critical for protein interactions"
+      }
+    ],
+    "inheritance_pattern": "autosomal_dominant",
+    "lof_tolerance": "low",
+    "missense_tolerance": "medium"
+  },
+  "BRCA2": {
+    "hotspot_regions": [
+      {
+        "start": 2000,
+        "end": 3000,
+        "evidence_level": 4,
+        "description": "DNA binding domain",
+        "pubmed_refs": ["33333333", "44444444"],
+        "pathogenicity_likelihood": 0.7
+      }
+    ],
+    "critical_regions": [
+      {
+        "start": 2000,
+        "end": 3000,
+        "type": "DNA_binding_domain",
+        "functional_impact": "high",
+        "description": "DNA repair function"
+      }
+    ],
+    "classification_rules": [
+      {
+        "condition": "missense_in_dna_binding_domain",
+        "position_range": [2000, 3000],
+        "action": "apply_PM1",
+        "evidence_level": 4,
+        "rationale": "DNA binding domain critical for repair function"
+      }
+    ],
+    "inheritance_pattern": "autosomal_dominant",
+    "lof_tolerance": "low",
+    "missense_tolerance": "medium"
+  },
+  "TP53": {
+    "hotspot_regions": [
+      {
+        "start": 102,
+        "end": 292,
+        "evidence_level": 5,
+        "description": "DNA binding domain",
+        "pubmed_refs": ["55555555", "66666666"],
+        "pathogenicity_likelihood": 0.9
+      },
+      {
+        "start": 273,
+        "end": 273,
+        "evidence_level": 5,
+        "description": "R273 hotspot",
+        "pubmed_refs": ["77777777"],
+        "pathogenicity_likelihood": 0.95
+      }
+    ],
+    "critical_regions": [
+      {
+        "start": 102,
+        "end": 292,
+        "type": "DNA_binding_domain",
+        "functional_impact": "high",
+        "description": "Transcription factor activity"
+      }
+    ],
+    "classification_rules": [
+      {
+        "condition": "missense_in_dna_binding_domain",
+        "position_range": [102, 292],
+        "action": "upgrade_PM1_to_PS1",
+        "evidence_level": 5,
+        "rationale": "DNA binding domain mutations frequently pathogenic"
+      },
+      {
+        "condition": "r273_hotspot",
+        "position_range": [273, 273],
+        "action": "apply_PS1",
+        "evidence_level": 5,
+        "rationale": "Well-established pathogenic hotspot"
+      }
+    ],
+    "inheritance_pattern": "autosomal_dominant",
+    "lof_tolerance": "very_low",
+    "missense_tolerance": "low"
+  },
+  "KRAS": {
+    "hotspot_regions": [
+      {
+        "start": 12,
+        "end": 13,
+        "evidence_level": 5,
+        "description": "Codon 12-13 hotspot",
+        "pubmed_refs": ["88888888", "99999999"],
+        "pathogenicity_likelihood": 0.95
+      },
+      {
+        "start": 59,
+        "end": 61,
+        "evidence_level": 5,
+        "description": "Codon 59-61 hotspot",
+        "pubmed_refs": ["10101010"],
+        "pathogenicity_likelihood": 0.9
+      },
+      {
+        "start": 146,
+        "end": 146,
+        "evidence_level": 4,
+        "description": "Codon 146 hotspot",
+        "pubmed_refs": ["11111111"],
+        "pathogenicity_likelihood": 0.8
+      }
+    ],
+    "critical_regions": [
+      {
+        "start": 1,
+        "end": 170,
+        "type": "GTPase_domain",
+        "functional_impact": "high",
+        "description": "GTPase activity"
+      }
+    ],
+    "classification_rules": [
+      {
+        "condition": "codon_12_13_mutation",
+        "position_range": [12, 13],
+        "action": "apply_PS1",
+        "evidence_level": 5,
+        "rationale": "Well-established oncogenic hotspot"
+      }
+    ],
+    "inheritance_pattern": "somatic",
+    "lof_tolerance": "high",
+    "missense_tolerance": "variable"
+  }
+}

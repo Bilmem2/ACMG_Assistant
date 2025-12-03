@@ -1,112 +1,166 @@
-# Python
+# =============================================================================
+# ACMG Assistant - .gitignore
+# Version: 4.0.0
+# =============================================================================
+
+# =============================================================================
+# Python Artifacts
+# =============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.egg-info/
+.installed.cfg
+*.egg
+.eggs/
+
+# =============================================================================
+# Virtual Environments
+# =============================================================================
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# =============================================================================
+# Testing & Coverage
+# =============================================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# =============================================================================
+# Build Artifacts & Distribution
+# =============================================================================
 build/
-develop-eggs/
 dist/
+*.exe
+*.spec
+*.manifest
+develop-eggs/
 downloads/
 eggs/
-.eggs/
 lib/
 lib64/
 parts/
 sdist/
 var/
 wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+ACMG_Assistant_Portable/
 
-# PyInstaller
-*.manifest
-*.spec
+# =============================================================================
+# Cache Files (ACMG Assistant specific)
+# =============================================================================
+# API response cache directory
+src/api_cache/
+api_cache/
 
-# Virtual environments
-venv/
-env/
-ENV/
+# Legacy cache files
+api_cache.json
+domain_api_cache.json
+*.cache.json
+*.cache.sqlite
+*.cache.db
 
-# IDE
+# =============================================================================
+# Logs & Temporary Files
+# =============================================================================
+logs/
+*.log
+tmp/
+.tmp/
+*.tmp
+
+# =============================================================================
+# IDE & Editor
+# =============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
+.spyproject/
 
-# OS
+# =============================================================================
+# OS Generated
+# =============================================================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Project specific
-api_cache.json
-domain_api_cache.json
+# =============================================================================
+# Project-Specific Runtime Files
+# =============================================================================
 diagnostic_report.json
 diagnostic_summary.txt
-*.log
-test_results/
 variant_classification_report.txt
 test_input.txt
-show_hotspot_api.py
+test_results/
 
-# Documentation - local only (not tracked in repo)
-README.md
-CHANGELOG.md
-RELEASE_NOTES_*.md
+# =============================================================================
+# Documentation (local drafts only)
+# =============================================================================
 CLEANUP_PLAN_*.md
 GIT_PUSH_STRATEGY.md
 commit_message.txt
-CLINVAR_DRUG_RESPONSE_FIX.md
-erepo.oas2.yml
-/ClinGen_gene_curation_list_GRCh38.tsv
+*_NOTES.md
+*_ROADMAP*.md
+*_ENHANCEMENTS.md
+*_REFERENCE.md
+*_SUMMARY.md
+*_GUIDE.md
 
-# Test files - specific patterns
+# =============================================================================
+# Example & Sample Files
+# =============================================================================
+example_*.csv
+show_hotspot_api.py
+
+# =============================================================================
+# External Dependencies (downloaded separately)
+# =============================================================================
+VAMPP-score-main/
+erepo.oas2.yml
+
+# =============================================================================
+# Old/Archived Tests (keep archived_tests/ but ignore loose files)
+# =============================================================================
 test_interactive.py
 test_phase*.py
 test_missense_integration.py
 
-# Core test suites (these ARE tracked)
-!test_acmg_*.py
-!test_all_*.py
-!test_api_*.py
-!test_classification.py
-!test_critical_*.py
-!test_denovo_*.py
-!test_evidence_*.py
-!test_functional_*.py
-!test_gene_*.py
-!test_inframe_*.py
-!test_phenotype_*.py
-!test_phylop_*.py
-!test_population_*.py
-!test_report_*.py
-
-# Build artifacts
-ACMG_Assistant_Portable/
-build/
-dist/
-VAMPP-score-main/
-build.bat
-build_executable_new.py
-requirements_build.txt
-
-# Root level folders (only src/ should be tracked)
-/config/
-/core/
-/data/
-/utils/
-/.vscode/
-/test_results/
-
-# Example and guide files
-example_*.csv
-*_GUIDE.md
-*_SUMMARY.md
-*_ENHANCEMENTS.md
-*_REFERENCE.md
-*_NOTES.md
-*_ROADMAP*.md
+# =============================================================================
+# Media Files
+# =============================================================================
 *.png
 *.jpg
 *.jpeg
+*.gif
+*.ico
+*.svg
+
+# =============================================================================
+# NOTE: The following directories MUST be tracked
+# =============================================================================
+# DO NOT add these to .gitignore:
+# - src/          (all source code)
+# - tests/        (all test files)
+# - data/         (gene rules, domain annotations)
+# - requirements.txt
+# - README.md
+# - pyproject.toml
