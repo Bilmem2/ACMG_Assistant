@@ -1,5 +1,8 @@
 # 🧬 ACMG Variant Classification Assistant v4.0.0
 
+
+![v4 0 0 screenshot](https://github.com/user-attachments/assets/1f36a61f-f6bf-4c42-9f7c-1608c700938d)
+
 > **A research-oriented, transparent, and extensible variant interpretation pipeline implementing ACMG/AMP 2015 & 2023 guidelines.**
 
 ## 📥 Quick Start
