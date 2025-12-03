@@ -10,23 +10,6 @@
 
 ---
 
-## 📋 Table of Contents
-
-1. [Overview](#overview)
-2. [Philosophy](#philosophy-critical)
-3. [Data Flow Architecture](#data-flow-architecture)
-4. [Caching Model](#caching-model)
-5. [Evidence Types Supported](#evidence-types-supported)
-6. [Limitations & Safety Notes](#limitations--safety-notes)
-7. [Versioning & Changelog](#versioning--changelog)
-8. [Installation & Usage](#installation--usage)
-9. [Binary Releases](#binary-releases--executable-distribution)
-10. [Project Structure](#project-structure)
-11. [Citation & References](#citation--references)
-12. [Contact](#contact)
-
----
-
 ## Overview
 
 **ACMG Assistant** is a comprehensive variant classification tool that implements the ACMG/AMP 2015 and 2023 guidelines for interpreting sequence variants. It provides:
