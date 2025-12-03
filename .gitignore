@@ -56,6 +56,10 @@ sdist/
 var/
 wheels/
 ACMG_Assistant_Portable/
+build.bat
+build_executable_new.py
+build_executable*.py
+requirements_build.txt
 
 # =============================================================================
 # Cache Files (ACMG Assistant specific)
@@ -118,6 +122,7 @@ test_results/
 # =============================================================================
 # Documentation (local drafts only)
 # =============================================================================
+README.md
 CLEANUP_PLAN_*.md
 GIT_PUSH_STRATEGY.md
 commit_message.txt
