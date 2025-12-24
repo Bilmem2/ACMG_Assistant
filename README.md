@@ -39,12 +39,6 @@
 
 ## Philosophy
 
-> [!IMPORTANT]
-> **Core Design Principle**
->
-> *"Local code contains ONLY interpretive logic — all factual biological data must come from external sources."*
-
-This separation ensures reproducibility and prevents the codebase from becoming a source of unvalidated biological claims:
 - ✅ **Thresholds, weights, scoring formulas** → Defined locally
 - ✅ **ACMG evidence combination rules** → Defined locally
 - ❌ **Predictor scores (REVEL, CADD, etc.)** → Must be fetched from APIs
