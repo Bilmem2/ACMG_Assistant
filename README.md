@@ -1,9 +1,17 @@
-# 🧬 ACMG Variant Classification Assistant v4.0.0
-
+# 🧬 ACMG Variant Classification Assistant
 
 ![v4 0 0 screenshot](https://github.com/user-attachments/assets/1f36a61f-f6bf-4c42-9f7c-1608c700938d)
 
 > **A research-oriented, transparent, and extensible variant interpretation pipeline implementing ACMG/AMP 2015 & 2023 guidelines.**
+
+> [!CAUTION]
+> **What This Tool Is NOT**
+> - ❌ NOT a clinical decision-making system
+> - ❌ NOT a replacement for expert review
+> - ❌ NOT validated for diagnostic use
+> - ❌ NOT a source of biological truth — it only interprets external data
+>
+> All classifications are **suggestions for research purposes only** and require validation by qualified professionals.
 
 ## 📥 Quick Start
 
@@ -15,32 +23,36 @@
 
 ## Overview
 
-**ACMG Assistant** is a comprehensive variant classification tool that implements the ACMG/AMP 2015 and 2023 guidelines for interpreting sequence variants. It provides:
+**ACMG Assistant** is a variant classification tool implementing the ACMG/AMP 2015 and 2023 guidelines. It combines automatic data retrieval from public APIs with structured interactive evidence collection to produce transparent, reproducible classifications.
 
-- **Automatic evaluation** of population frequency criteria (BA1, BS1, PM2)
-- **Automatic evaluation** of computational/in-silico criteria (PP3, BP4)
-- **Automatic evaluation** of functional domain criteria (PM1)
-- **Automatic evaluation** of phenotype matching (PP4, BP5)
-- **Interactive evaluation** of literature-based criteria (PS3/BS3, PS4, PP1/BS4, PS1/PM5, PP5/BP6)
+**Automatic evaluation:**
+- Population frequency criteria (BA1, BS1, PM2) via gnomAD, ExAC, TOPMed
+- Computational/in-silico criteria (PP3, BP4) via multi-source predictor aggregation
+- Functional domain criteria (PM1) via CancerHotspots and UniProt
+- Phenotype matching (PP4, BP5) via HPO ontology similarity
 
-### Purpose
+**Interactive evaluation:**
+- Literature-based criteria (PS3/BS3, PS4, PP1/BS4, PS1/PM5, PP5/BP6) through structured prompts
 
-This tool is designed for:
-- **Educational use**: Understanding ACMG classification logic
-- **Research pipelines**: Reproducible, transparent variant interpretation
-- **Workflow augmentation**: Pre-screening variants before expert review
+### Intended Use
 
-> ⚠️ **NOT for direct clinical decision-making** — All results require validation by qualified professionals.
+| Use Case | Suitability |
+|----------|-------------|
+| Educational use | ✅ Understanding ACMG classification logic |
+| Research pipelines | ✅ Reproducible, transparent variant interpretation |
+| Pre-screening variants | ✅ Workflow augmentation before expert review |
+| Clinical decision-making | ❌ **Not intended** — requires expert validation |
 
 ---
 
 ## Philosophy
 
-The core design principle of ACMG Assistant is:
+> [!IMPORTANT]
+> **Core Design Principle**
+>
+> *"Local code contains ONLY interpretive logic — all factual biological data must come from external sources."*
 
-> **"Local code contains ONLY interpretive logic — all factual biological data must come from external sources."**
-
-This means:
+This separation ensures reproducibility and prevents the codebase from becoming a source of unvalidated biological claims:
 - ✅ **Thresholds, weights, scoring formulas** → Defined locally
 - ✅ **ACMG evidence combination rules** → Defined locally
 - ❌ **Predictor scores (REVEL, CADD, etc.)** → Must be fetched from APIs
@@ -72,10 +84,10 @@ Criteria that require literature review are handled through **structured interac
 
 ### Phenotype Matching
 
-The `PhenotypeMatcher` uses:
-- Local HPO ontology for term similarity
-- Reproducible Jaccard/IC-based similarity scores
-- **NOT a replacement for clinical phenotyping**
+The `PhenotypeMatcher` provides algorithmic phenotype-to-gene matching for PP4/BP5 evidence:
+- Uses HPO (Human Phenotype Ontology) term similarity
+- Computes reproducible Jaccard and Information Content (IC) based scores
+- Serves as a **screening aid**, not a replacement for clinical phenotyping by domain experts
 
 ---
 
@@ -264,9 +276,9 @@ Default: `src/api_cache/` (organized by category/source)
 
 ## Versioning & Changelog
 
-### Current Version: **4.0.0**
+### Current Version: **v4.0.x**
 
-Released: December 2025
+Latest Release: December 2025
 
 ### Major Changes in v4.0.0
 
@@ -338,6 +350,19 @@ The tool requires internet access for:
 
 Offline mode uses cached data only.
 
+### Linux Installation
+
+Tested on Ubuntu 22.04 LTS:
+
+```bash
+git clone https://github.com/Bilmem2/ACMG_Assistant
+cd ACMG_Assistant
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd src && python3 acmg_assistant.py
+```
+
 ---
 
 ## Binary Releases / Executable Distribution
@@ -372,6 +397,28 @@ python build_executable_new.py
 
 # Output: dist/ACMG_Assistant.exe
 ```
+
+---
+
+## Docker Container
+
+ACMG Assistant is available as a Docker container for cross-platform deployment:
+
+```bash
+# Pull from GitHub Container Registry
+docker pull ghcr.io/bilmem2/acmg_assistant:latest
+
+# Or from Quay.io
+docker pull quay.io/bilmem2/acmg_assistant:latest
+
+# Run interactively
+docker run -it --rm ghcr.io/bilmem2/acmg_assistant:latest
+
+# With persistent cache
+docker run -it --rm -v ./cache:/app/cache ghcr.io/bilmem2/acmg_assistant:latest
+```
+
+See [Dockerfile](Dockerfile) for build details.
 
 ---
 
@@ -454,5 +501,6 @@ This tool uses a VAMPP-score-inspired metascore approach. If you use this method
 ---
 
 <p align="center">
-  <strong>ACMG Assistant v4.0.0</strong><br>
+  <strong>ACMG Assistant</strong><br>
+  <em>Research Tool — Not for Clinical Use</em>
 </p>
