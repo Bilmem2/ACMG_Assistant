@@ -1,0 +1,114 @@
+# =============================================================================
+# Docker Publish Workflow - ACMG Assistant
+# =============================================================================
+# Builds and publishes Docker images to GitHub Container Registry (GHCR)
+# Triggers on version tags (v*) and manual dispatch
+# =============================================================================
+
+name: Docker Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (e.g., v4.0.0)'
+        required: false
+        default: 'latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ===========================================================================
+  # Build and Push Docker Image
+  # ===========================================================================
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===========================================================================
+  # Smoke Test - Verify Container Works
+  # ===========================================================================
+  smoke-test:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the built image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag || 'latest' }}
+
+      - name: Test --version flag
+        run: |
+          echo "=== Testing --version flag ==="
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag || 'latest' }} --version
+          echo "✓ Version check passed"
+
+      - name: Test --test mode (automated scenarios)
+        run: |
+          echo "=== Testing --test mode ==="
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag || 'latest' }} --test
+          echo "✓ Test mode passed"
+
+      - name: Smoke test summary
+        run: |
+          echo ""
+          echo "============================================="
+          echo "  SMOKE TEST PASSED"
+          echo "============================================="
+          echo "  Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "  Tag: ${{ needs.build-and-push.outputs.image_tag || 'latest' }}"
+          echo "============================================="

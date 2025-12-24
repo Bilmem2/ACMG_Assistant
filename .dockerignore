@@ -1,0 +1,70 @@
+# =============================================================================
+# Docker Ignore - ACMG Assistant
+# =============================================================================
+# Excludes files not needed in container image
+# =============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing
+tests/
+archived_tests/
+test_results/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.spec
+build.bat
+build_executable*.py
+requirements_build.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (not needed in runtime)
+*.md
+docs/
+
+# Development files
+requirements-dev.txt
+pyproject.toml
+
+# Cache files (runtime creates its own)
+api_cache.json
+src/api_cache.json
+src/api_cache/
+
+# Miscellaneous
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
