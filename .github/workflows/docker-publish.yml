@@ -70,6 +70,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # -------------------------------------------------------------------------
+      # Quay.io Push (reuse already-built image)
+      # -------------------------------------------------------------------------
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: bilmem2+github
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Tag and push to Quay.io
+        run: |
+          IMAGE_TAG="${{ steps.meta.outputs.version }}"
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG} quay.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          docker push quay.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          echo "✓ Pushed to quay.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+
   # ===========================================================================
   # Smoke Test - Verify Container Works
   # ===========================================================================
