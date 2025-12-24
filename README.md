@@ -4,14 +4,6 @@
 
 > **A research-oriented, transparent, and extensible variant interpretation pipeline implementing ACMG/AMP 2015 & 2023 guidelines.**
 
-> [!CAUTION]
-> **What This Tool Is NOT**
-> - ❌ NOT a clinical decision-making system
-> - ❌ NOT a replacement for expert review
-> - ❌ NOT validated for diagnostic use
-> - ❌ NOT a source of biological truth — it only interprets external data
->
-> All classifications are **suggestions for research purposes only** and require validation by qualified professionals.
 
 ## 📥 Quick Start
 
@@ -502,5 +494,4 @@ This tool uses a VAMPP-score-inspired metascore approach. If you use this method
 
 <p align="center">
   <strong>ACMG Assistant</strong><br>
-  <em>Research Tool — Not for Clinical Use</em>
 </p>
