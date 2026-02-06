@@ -7,7 +7,7 @@
 
 ## 📥 Quick Start
 
-> **[Download Latest Windows Executable from Google Drive](https://drive.google.com/file/d/1Kq84cG7pgQqmyENWo9lyGDOsX_1gbeDQ/view?usp=sharing)**
+> **[Download Latest Windows Executable from Google Drive](https://drive.google.com/file/d/1aoIs-wQVc_Y890BW88cRWfVPuIqTk1Sh/view?usp=sharing)**
 >
 > Ready-to-use standalone `.exe` — No Python installation required!
 
@@ -357,7 +357,7 @@ cd src && python3 acmg_assistant.py
 
 ACMG Assistant is distributed as a standalone Windows `.exe` for users without Python:
 
-> **[Download from Google Drive](https://drive.google.com/file/d/1Kq84cG7pgQqmyENWo9lyGDOsX_1gbeDQ/view?usp=sharing)**
+> **[Download from Google Drive](https://drive.google.com/file/d/1aoIs-wQVc_Y890BW88cRWfVPuIqTk1Sh/view?usp=sharing)**
 
 ### Usage
 
