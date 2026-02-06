@@ -378,8 +378,7 @@ class ACMGClassifier:
         suggestions = []
         
         # Get applied criteria
-        applied_pathogenic = evidence_results.get('applied_criteria', {}).get('pathogenic', [])
-        applied_benign = evidence_results.get('applied_criteria', {}).get('benign', [])
+        applied_pathogenic, applied_benign = self._get_applied_criteria_lists(evidence_results)
         
         # Suggest missing key evidence
         if classification == 'VUS':
@@ -396,7 +395,7 @@ class ACMGClassifier:
                 suggestions.append("Consider case-control studies (PS4)")
         
         # Suggest database checks
-        if not evidence_results.get('applied_criteria', {}).get('pathogenic'):
+        if not applied_pathogenic:
             suggestions.append("Check ClinVar for existing classifications")
             suggestions.append("Verify variant in gnomAD and other population databases")
         
@@ -409,6 +408,31 @@ class ACMGClassifier:
         suggestions.append("Review recent literature for this variant or gene")
         
         return suggestions
+
+    def _get_applied_criteria_lists(self, evidence_results: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+        """Normalize applied criteria into pathogenic and benign lists."""
+        applied = evidence_results.get('applied_criteria', {})
+
+        # Preferred structure: {"pathogenic": [...], "benign": [...]} 
+        if isinstance(applied, dict) and ('pathogenic' in applied or 'benign' in applied):
+            return applied.get('pathogenic', []), applied.get('benign', [])
+
+        if not isinstance(applied, dict):
+            return [], []
+
+        pathogenic_criteria = set(evidence_results.get('pathogenic_criteria', {}).keys())
+        benign_criteria = set(evidence_results.get('benign_criteria', {}).keys())
+
+        applied_pathogenic = []
+        applied_benign = []
+
+        for criterion in applied.keys():
+            if criterion in pathogenic_criteria or criterion.startswith(('PVS', 'PS', 'PM', 'PP')):
+                applied_pathogenic.append(criterion)
+            elif criterion in benign_criteria or criterion.startswith(('BA', 'BS', 'BP')):
+                applied_benign.append(criterion)
+
+        return applied_pathogenic, applied_benign
     
     def _check_conflicts(self, pathogenic_counts: Dict[str, int], 
                         benign_counts: Dict[str, int]) -> List[str]:
@@ -439,6 +463,7 @@ class ACMGClassifier:
         pathogenic_counts = classification_result['pathogenic_counts']
         benign_counts = classification_result['benign_counts']
         applied_criteria = classification_result['applied_criteria']
+        applied_pathogenic, applied_benign = self._get_applied_criteria_lists(classification_result)
         
         explanation = f"Classification: {classification}\n\n"
         
@@ -446,15 +471,15 @@ class ACMGClassifier:
         explanation += "Evidence Summary:\n"
         explanation += "-" * 20 + "\n"
         
-        if applied_criteria.get('pathogenic'):
-            explanation += f"Pathogenic criteria: {', '.join(applied_criteria['pathogenic'])}\n"
+        if applied_pathogenic:
+            explanation += f"Pathogenic criteria: {', '.join(applied_pathogenic)}\n"
             explanation += f"  Very Strong: {pathogenic_counts['very_strong']}\n"
             explanation += f"  Strong: {pathogenic_counts['strong']}\n"
             explanation += f"  Moderate: {pathogenic_counts['moderate']}\n"
             explanation += f"  Supporting: {pathogenic_counts['supporting']}\n"
         
-        if applied_criteria.get('benign'):
-            explanation += f"Benign criteria: {', '.join(applied_criteria['benign'])}\n"
+        if applied_benign:
+            explanation += f"Benign criteria: {', '.join(applied_benign)}\n"
             explanation += f"  Stand-alone: {benign_counts['stand_alone']}\n"
             explanation += f"  Strong: {benign_counts['strong']}\n"
             explanation += f"  Supporting: {benign_counts['supporting']}\n"
@@ -517,12 +542,13 @@ class ACMGClassifier:
     
     def get_acmg_summary(self, classification_result: Dict[str, Any]) -> Dict[str, Any]:
         """Get a concise summary of ACMG classification."""
+        applied_pathogenic, applied_benign = self._get_applied_criteria_lists(classification_result)
         
         return {
             'classification': classification_result['classification'],
             'confidence': classification_result['confidence'],
-            'pathogenic_criteria': classification_result['applied_criteria'].get('pathogenic', []),
-            'benign_criteria': classification_result['applied_criteria'].get('benign', []),
+            'pathogenic_criteria': applied_pathogenic,
+            'benign_criteria': applied_benign,
             'total_pathogenic_evidence': sum(classification_result['pathogenic_counts'].values()),
             'total_benign_evidence': sum(classification_result['benign_counts'].values()),
             'vampp_score': classification_result.get('vampp_score'),

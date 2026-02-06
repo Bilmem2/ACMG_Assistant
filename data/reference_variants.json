@@ -1,0 +1,85 @@
+{
+  "variants": [
+    {
+      "id": "braf_v600e_grch38",
+      "chromosome": "7",
+      "position": 140453136,
+      "ref_allele": "A",
+      "alt_allele": "T",
+      "gene": "BRAF",
+      "preferred_sources": ["gnomad", "ensembl", "clinvar"]
+    },
+    {
+      "id": "myvariant_demo_hg19",
+      "chromosome": "7",
+      "position": 55241707,
+      "ref_allele": "G",
+      "alt_allele": "T",
+      "gene": "BRAF",
+      "preferred_sources": ["myvariant"]
+    },
+    {
+      "id": "myvariant_demo_chr1_35367",
+      "chromosome": "1",
+      "position": 35367,
+      "ref_allele": "G",
+      "alt_allele": "A",
+      "gene": "N/A",
+      "preferred_sources": ["myvariant"]
+    },
+    {
+      "id": "myvariant_demo_chr3_49721532",
+      "chromosome": "3",
+      "position": 49721532,
+      "ref_allele": "G",
+      "alt_allele": "A",
+      "gene": "N/A",
+      "preferred_sources": ["myvariant"]
+    },
+    {
+      "id": "myvariant_demo_chr9_107620835",
+      "chromosome": "9",
+      "position": 107620835,
+      "ref_allele": "G",
+      "alt_allele": "A",
+      "gene": "N/A",
+      "preferred_sources": ["myvariant"]
+    },
+    {
+      "id": "myvariant_demo_chr16_28883241",
+      "chromosome": "16",
+      "position": 28883241,
+      "ref_allele": "A",
+      "alt_allele": "G",
+      "gene": "N/A",
+      "preferred_sources": ["myvariant"]
+    },
+    {
+      "id": "apoe_rs429358_grch38",
+      "chromosome": "19",
+      "position": 44908684,
+      "ref_allele": "T",
+      "alt_allele": "C",
+      "gene": "APOE",
+      "preferred_sources": ["gnomad", "ensembl"]
+    }
+  ],
+  "hpo_terms": [
+    {
+      "id": "HP:0003002",
+      "label": "Breast carcinoma",
+      "source": "OLS"
+    },
+    {
+      "id": "HP:0001250",
+      "label": "Seizures",
+      "source": "OLS"
+    }
+  ],
+  "ena_accessions": [
+    {
+      "id": "SRR000001",
+      "source": "ENA"
+    }
+  ]
+}

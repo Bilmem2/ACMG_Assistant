@@ -8,10 +8,10 @@ License: MIT License
 
 # Version and metadata information
 VERSION_INFO = {
-    'version': '4.0.0',
+    'version': '4.1.0',
     'author': 'Can Sevilmiş',
     'license': 'MIT License',
-    'last_updated': 'December 3, 2025',
+    'last_updated': 'February 6, 2026',
     'guidelines': 'ACMG/AMP 2015 & 2023',
     'description': 'ACMG Variant Classification Assistant - Multi-Source API Integration with Validated Caching',
     'major_features': [
@@ -36,7 +36,7 @@ VERSION_INFO = {
         '✨ Enhanced PP5/BP6 source validation',
         '✨ HGVS format support with auto-extraction',
         '🆕 ResultCache with strict validation',
-        '🆕 198 comprehensive tests passing'
+        '🆕 Expanded unit, integration, and CLI test coverage'
     ]
 }
 

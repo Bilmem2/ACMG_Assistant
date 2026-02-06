@@ -31,6 +31,7 @@ Classes:
 """
 
 import json
+from pathlib import Path
 from typing import Dict, Optional, Any
 
 
@@ -63,52 +64,10 @@ class GnomADClient:
         """
         frequencies = {}
         
-        # Primary: Use pre-fetched PopulationStats (typed API data)
-        population_stats = getattr(variant_data, 'population_stats', None)
-        if population_stats:
-            for source, stats in population_stats.items():
-                # Handle PopulationStats dataclass
-                if hasattr(stats, 'af') and stats.af is not None:
-                    frequencies['ALL'] = stats.af
-                    
-                    # Extract sub-population frequencies if available
-                    subpop = getattr(stats, 'subpop', None)
-                    if subpop:
-                        for pop_code, pop_data in subpop.items():
-                            if isinstance(pop_data, dict):
-                                pop_af = pop_data.get('af')
-                            else:
-                                pop_af = getattr(pop_data, 'af', None)
-                            if pop_af is not None:
-                                frequencies[pop_code.upper()] = pop_af
-                    
-                    # Use popmax if available
-                    popmax_af = getattr(stats, 'popmax_af', None)
-                    if popmax_af is not None:
-                        frequencies['POPMAX'] = popmax_af
-                    
-                    break  # Use first available source
-                
-                # Handle dict format
-                elif isinstance(stats, dict):
-                    if stats.get('af') is not None:
-                        frequencies['ALL'] = stats['af']
-                        
-                        # Extract sub-populations
-                        subpop = stats.get('subpop', {})
-                        for pop_code, pop_data in subpop.items():
-                            if isinstance(pop_data, dict) and pop_data.get('af') is not None:
-                                frequencies[pop_code.upper()] = pop_data['af']
-                        
-                        if stats.get('popmax_af') is not None:
-                            frequencies['POPMAX'] = stats['popmax_af']
-                        
-                        break
-        
-        # Fallback: Use legacy population_data dict
+        # Prefer manual population_data when provided by user
         if not frequencies:
             population_data = getattr(variant_data, 'population_data', {}) or {}
-            if population_data:
+            if self._has_manual_population_data(population_data):
                 # Map common keys to frequency dict
                 if population_data.get('gnomad_af') is not None:
                     frequencies['ALL'] = population_data['gnomad_af']
@@ -128,6 +87,49 @@ class GnomADClient:
                 for key, code in ethnicity_keys.items():
                     if population_data.get(key) is not None:
                         frequencies[code] = population_data[key]
+
+        # Use pre-fetched PopulationStats (typed API data) if no manual override
+        if not frequencies:
+            population_stats = getattr(variant_data, 'population_stats', None)
+            if population_stats:
+                for source, stats in population_stats.items():
+                    # Handle PopulationStats dataclass
+                    if hasattr(stats, 'af') and stats.af is not None:
+                        frequencies['ALL'] = stats.af
+                        
+                        # Extract sub-population frequencies if available
+                        subpop = getattr(stats, 'subpop', None)
+                        if subpop:
+                            for pop_code, pop_data in subpop.items():
+                                if isinstance(pop_data, dict):
+                                    pop_af = pop_data.get('af')
+                                else:
+                                    pop_af = getattr(pop_data, 'af', None)
+                                if pop_af is not None:
+                                    frequencies[pop_code.upper()] = pop_af
+                        
+                        # Use popmax if available
+                        popmax_af = getattr(stats, 'popmax_af', None)
+                        if popmax_af is not None:
+                            frequencies['POPMAX'] = popmax_af
+                        
+                        break  # Use first available source
+                    
+                    # Handle dict format
+                    elif isinstance(stats, dict):
+                        if stats.get('af') is not None:
+                            frequencies['ALL'] = stats['af']
+                            
+                            # Extract sub-populations
+                            subpop = stats.get('subpop', {})
+                            for pop_code, pop_data in subpop.items():
+                                if isinstance(pop_data, dict) and pop_data.get('af') is not None:
+                                    frequencies[pop_code.upper()] = pop_data['af']
+                            
+                            if stats.get('popmax_af') is not None:
+                                frequencies['POPMAX'] = stats['popmax_af']
+                            
+                            break
         
         # Last resort: Try local JSON cache (deprecated, for legacy compatibility)
         if not frequencies:
@@ -137,13 +139,24 @@ class GnomADClient:
             if gene and hgvs_c:
                 key = f"{gene}:{hgvs_c}"
                 try:
-                    with open('data/population_data/population_frequencies.json', 'r') as f:
+                    fallback_path = Path(__file__).resolve().parent.parent.parent / 'data' / 'population_data' / 'population_frequencies.json'
+                    with open(fallback_path, 'r') as f:
                         freq_db = json.load(f)
                     frequencies = freq_db.get(key, {})
                 except Exception:
                     pass
         
         return frequencies
+
+    def _has_manual_population_data(self, population_data: Dict[str, Any]) -> bool:
+        """Check if the user provided any population data overrides."""
+        manual_keys = [
+            'gnomad_af', 'gnomad_af_popmax', 'exac_af',
+            'gnomad_af_nfe', 'gnomad_af_afr', 'gnomad_af_eas',
+            'gnomad_af_amr', 'gnomad_af_sas', 'gnomad_af_fin',
+            'gnomad_af_asj'
+        ]
+        return any(population_data.get(key) is not None for key in manual_keys)
 
 
 class EthnicityAwarePopulationAnalyzer:
@@ -171,11 +184,13 @@ class EthnicityAwarePopulationAnalyzer:
             Dict mapping ethnicity codes to threshold values
         """
         try:
-            with open('data/population_data/ethnicity_thresholds.json', 'r') as f:
+            thresholds_path = Path(__file__).resolve().parent.parent.parent / 'data' / 'population_data' / 'ethnicity_thresholds.json'
+            with open(thresholds_path, 'r') as f:
                 return json.load(f)
         except Exception:
             # Default thresholds if file not found
             return {'ALL': 0.01, 'EUR': 0.01, 'AFR': 0.01}
+
     
     def analyze_population_frequency(self, variant_data, 
                                      patient_ethnicity: Optional[str] = None) -> Optional[str]:

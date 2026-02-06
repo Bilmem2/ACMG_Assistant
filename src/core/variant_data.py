@@ -40,7 +40,7 @@ class VariantData:
     @property
     def hgvs_c(self) -> Optional[str]:
         """Get HGVS cDNA notation from basic_info."""
-        return self.basic_info.get('hgvs_c', None)
+        return self.basic_info.get('hgvs_c') or self.basic_info.get('cdna_change')
     """
     Comprehensive data structure for genetic variant information.
     

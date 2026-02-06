@@ -145,12 +145,12 @@ class ReportGenerator:
         f.write(f"GUIDELINES VERSION: ACMG/AMP {classification_result.get('guidelines_version', '2015')}\n\n")
         
         # Applied criteria
-        applied_criteria = classification_result.get('applied_criteria', {})        
-        if applied_criteria.get('pathogenic'):
-            f.write(f"PATHOGENIC CRITERIA: {', '.join(applied_criteria['pathogenic'])}\n")
+        applied_pathogenic, applied_benign = self._normalize_applied_criteria(classification_result)
+        if applied_pathogenic:
+            f.write(f"PATHOGENIC CRITERIA: {', '.join(applied_pathogenic)}\n")
         
-        if applied_criteria.get('benign'):
-            f.write(f"BENIGN CRITERIA: {', '.join(applied_criteria['benign'])}\n")
+        if applied_benign:
+            f.write(f"BENIGN CRITERIA: {', '.join(applied_benign)}\n")
         
         # Evidence counts
         pathogenic_counts = classification_result.get('pathogenic_counts', {})
@@ -181,6 +181,30 @@ class ReportGenerator:
                 f.write(f"  ⚠️  {conflict}\n")
         
         f.write("\n")
+
+    def _normalize_applied_criteria(self, classification_result: Dict[str, Any]) -> tuple[list, list]:
+        """Normalize applied criteria into pathogenic and benign lists."""
+        applied = classification_result.get('applied_criteria', {})
+
+        if isinstance(applied, dict) and ('pathogenic' in applied or 'benign' in applied):
+            return applied.get('pathogenic', []), applied.get('benign', [])
+
+        if not isinstance(applied, dict):
+            return [], []
+
+        pathogenic_criteria = set(classification_result.get('pathogenic_criteria', {}).keys())
+        benign_criteria = set(classification_result.get('benign_criteria', {}).keys())
+
+        applied_pathogenic = []
+        applied_benign = []
+
+        for criterion in applied.keys():
+            if criterion in pathogenic_criteria or criterion.startswith(('PVS', 'PS', 'PM', 'PP')):
+                applied_pathogenic.append(criterion)
+            elif criterion in benign_criteria or criterion.startswith(('BA', 'BS', 'BP')):
+                applied_benign.append(criterion)
+
+        return applied_pathogenic, applied_benign
     
     def _write_evidence_details(self, f, evidence_results: Dict[str, Any]):
         """Write detailed evidence evaluation."""
@@ -215,30 +239,44 @@ class ReportGenerator:
         f.write("-"*50 + "\n\n")
         
         population_data = variant_data.population_data
+        population_stats = getattr(variant_data, 'population_stats', None)
         
-        if not population_data:
+        if not population_data and not population_stats:
             f.write("No population frequency data available.\n\n")
             return
         
         f.write("FREQUENCY DATA:\n")
-        
-        if population_data.get('gnomad_af') is not None:
-            f.write(f"  gnomAD Overall AF: {population_data['gnomad_af']:.2e}\n")
-        
-        if population_data.get('gnomad_af_popmax') is not None:
-            f.write(f"  gnomAD PopMax AF: {population_data['gnomad_af_popmax']:.2e}\n")
-        
-        if population_data.get('gnomad_hom_count') is not None:
-            f.write(f"  gnomAD Homozygous Count: {population_data['gnomad_hom_count']}\n")
-        
-        if population_data.get('gnomad_het_count') is not None:
-            f.write(f"  gnomAD Heterozygous Count: {population_data['gnomad_het_count']}\n")
-        
-        if population_data.get('exac_af') is not None:
-            f.write(f"  ExAC AF: {population_data['exac_af']:.2e}\n")
-        
-        if population_data.get('disease_prevalence'):
-            f.write(f"  Disease Prevalence: {population_data['disease_prevalence']}\n")
+
+        if population_data:
+            if population_data.get('gnomad_af') is not None:
+                f.write(f"  gnomAD Overall AF: {population_data['gnomad_af']:.2e}\n")
+            
+            if population_data.get('gnomad_af_popmax') is not None:
+                f.write(f"  gnomAD PopMax AF: {population_data['gnomad_af_popmax']:.2e}\n")
+            
+            if population_data.get('gnomad_hom_count') is not None:
+                f.write(f"  gnomAD Homozygous Count: {population_data['gnomad_hom_count']}\n")
+            
+            if population_data.get('gnomad_het_count') is not None:
+                f.write(f"  gnomAD Heterozygous Count: {population_data['gnomad_het_count']}\n")
+            
+            if population_data.get('exac_af') is not None:
+                f.write(f"  ExAC AF: {population_data['exac_af']:.2e}\n")
+            
+            if population_data.get('disease_prevalence'):
+                f.write(f"  Disease Prevalence: {population_data['disease_prevalence']}\n")
+
+        if population_stats:
+            for source, stats in population_stats.items():
+                if hasattr(stats, 'af') and stats.af is not None:
+                    f.write(f"  {source} AF: {stats.af:.2e}\n")
+                    popmax = getattr(stats, 'popmax_af', None)
+                    if popmax is not None:
+                        f.write(f"  {source} PopMax AF: {popmax:.2e}\n")
+                elif isinstance(stats, dict) and stats.get('af') is not None:
+                    f.write(f"  {source} AF: {stats['af']:.2e}\n")
+                    if stats.get('popmax_af') is not None:
+                        f.write(f"  {source} PopMax AF: {stats['popmax_af']:.2e}\n")
         
         f.write("\n")
     
@@ -248,16 +286,24 @@ class ReportGenerator:
         f.write("-"*50 + "\n\n")
         
         insilico_data = variant_data.insilico_data
+        predictor_scores = getattr(variant_data, 'predictor_scores', None)
         
-        if not insilico_data:
+        if not insilico_data and not predictor_scores:
             f.write("No in silico prediction data available.\n\n")
             return
         
         f.write("PREDICTION SCORES:\n")
         
-        for predictor, score in insilico_data.items():
-            if score is not None:
-                f.write(f"  {predictor.upper()}: {score}\n")
+        if insilico_data:
+            for predictor, score in insilico_data.items():
+                if score is not None:
+                    f.write(f"  {predictor.upper()}: {score}\n")
+        
+        if predictor_scores:
+            for predictor, score_obj in predictor_scores.items():
+                if hasattr(score_obj, 'value') and score_obj.value is not None:
+                    source = getattr(score_obj, 'source', 'unknown')
+                    f.write(f"  {predictor.upper()} ({source}): {score_obj.value}\n")
         
         # VAMPP score details
         vampp_score = evidence_results.get('vampp_score')

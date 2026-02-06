@@ -269,16 +269,9 @@ class EvidenceEvaluator:
         Args:
             variant_data: VariantData object to populate with external data
         """
-        # Skip if data already fetched (avoid redundant API calls)
-        if hasattr(variant_data, 'predictor_scores') and variant_data.predictor_scores:
-            return
-        
-        # Skip if insilico_data already present (backward compatibility)
-        # This allows tests to provide their own predictor data without API override
+        # Skip predictor fetch if already available (avoid redundant API calls)
+        has_predictor_scores = bool(getattr(variant_data, 'predictor_scores', None))
         insilico_data = getattr(variant_data, 'insilico_data', {}) or {}
-        if insilico_data:
-            # Don't fetch from API if test data is already provided
-            return
         
         basic_info = variant_data.basic_info or {}
         chrom = basic_info.get('chromosome')
@@ -288,7 +281,7 @@ class EvidenceEvaluator:
         gene = basic_info.get('gene')
         
         # Fetch predictor scores from multi-source API
-        if self.predictor_client and chrom and pos and ref and alt:
+        if self.predictor_client and chrom and pos and ref and alt and not has_predictor_scores:
             try:
                 variant_data.predictor_scores = self.predictor_client.get_predictor_scores(
                     chrom=str(chrom),
@@ -310,16 +303,21 @@ class EvidenceEvaluator:
             except Exception as e:
                 print(f"⚠️  Warning: Could not fetch predictor scores: {str(e)}")
                 variant_data.predictor_scores = None
+
+        # Apply manual in silico overrides on top of API data when provided
+        if insilico_data:
+            self._apply_manual_predictor_overrides(variant_data, insilico_data)
         
         # Fetch population statistics from multi-source API
         if self.population_client and chrom and pos and ref and alt:
             try:
-                variant_data.population_stats = self.population_client.get_population_stats(
-                    chrom=str(chrom),
-                    pos=int(pos),
-                    ref=str(ref),
-                    alt=str(alt)
-                )
+                if not getattr(variant_data, 'population_stats', None):
+                    variant_data.population_stats = self.population_client.get_population_stats(
+                        chrom=str(chrom),
+                        pos=int(pos),
+                        ref=str(ref),
+                        alt=str(alt)
+                    )
                 
                 # Log population data availability
                 if variant_data.population_stats:
@@ -330,6 +328,60 @@ class EvidenceEvaluator:
             except Exception as e:
                 print(f"⚠️  Warning: Could not fetch population stats: {str(e)}")
                 variant_data.population_stats = None
+
+    def _apply_manual_predictor_overrides(self, variant_data, insilico_data: Dict[str, Any]) -> None:
+        """
+        Apply user-provided in silico scores on top of API predictor scores.
+
+        Manual values take precedence when provided.
+        """
+        from config.predictors import PredictorScore, INVERTED_PREDICTORS, INSILICO_WEIGHTS
+
+        if not insilico_data:
+            return
+
+        if getattr(variant_data, 'predictor_scores', None) is None:
+            variant_data.predictor_scores = {}
+
+        allowed_predictors = set(INSILICO_WEIGHTS.keys()) | {
+            'bayesdel', 'primateai', 'mpc'
+        }
+        key_map = {
+            'cadd': 'cadd_phred',
+            'cadd_phred': 'cadd_phred',
+            'polyphen': 'polyphen2',
+            'polyphen2': 'polyphen2',
+            'alphamissense': 'alphamissense',
+            'revel': 'revel',
+            'sift': 'sift',
+            'metasvm': 'metasvm',
+            'vest4': 'vest4',
+            'fathmm': 'fathmm',
+            'bayesdel': 'bayesdel',
+            'primateai': 'primateai',
+            'mpc': 'mpc',
+        }
+
+        for raw_key, raw_value in insilico_data.items():
+            if raw_value is None:
+                continue
+
+            predictor_key = key_map.get(raw_key)
+            if not predictor_key or predictor_key not in allowed_predictors:
+                continue
+
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+
+            variant_data.predictor_scores[predictor_key] = PredictorScore(
+                predictor=predictor_key,
+                value=value,
+                source='manual_input',
+                version='manual',
+                is_inverted=(predictor_key in INVERTED_PREDICTORS)
+            )
     
     def evaluate_all_criteria(self, variant_data) -> Dict[str, Any]:
         """

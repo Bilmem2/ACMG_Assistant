@@ -297,7 +297,7 @@ class PredictorAPIClient:
             
             # Request dbNSFP fields
             params = {
-                'fields': 'dbnsfp.revel.score,dbnsfp.cadd.phred,dbnsfp.alphamissense.am_pathogenicity,'
+                'fields': 'dbnsfp.revel.score,dbnsfp.cadd.phred,dbnsfp.alphamissense.score,'
                          'dbnsfp.sift.score,dbnsfp.polyphen2.hdiv.score,dbnsfp.metasvm.score,'
                          'dbnsfp.vest4.score,dbnsfp.fathmm.score,dbnsfp.bayesdel.addaf_score,'
                          'dbnsfp.primateai.score,dbnsfp.mpc.score',
@@ -372,7 +372,7 @@ class PredictorAPIClient:
         score_mappings = {
             'revel': ('revel', 'score'),
             'cadd_phred': ('cadd', 'phred'),
-            'alphamissense': ('alphamissense', 'am_pathogenicity'),
+            'alphamissense': ('alphamissense', 'score'),
             'sift': ('sift', 'score'),
             'polyphen2': ('polyphen2', 'hdiv', 'score'),
             'metasvm': ('metasvm', 'score'),
@@ -385,6 +385,8 @@ class PredictorAPIClient:
         
         for predictor, path in score_mappings.items():
             value = self._extract_nested_value(dbnsfp, path)
+            if value is None and predictor == 'alphamissense':
+                value = self._extract_nested_value(dbnsfp, ('alphamissense', 'am_pathogenicity'))
             if value is not None:
                 # Handle list values (take mean or first)
                 if isinstance(value, list):
@@ -556,7 +558,11 @@ class PredictorAPIClient:
             
             if response.status_code == 200:
                 data = response.json()
-                
+
+                # CADD may return a list of records or a single object
+                if isinstance(data, list):
+                    data = data[0] if data else {}
+
                 # CADD returns both raw and phred-scaled scores
                 phred_score = data.get('PHRED') or data.get('phred')
                 if phred_score is not None:
@@ -803,9 +809,18 @@ class PopulationAPIClient:
         
         # Primary source: gnomAD v4 via GraphQL
         if chrom and pos and ref and alt:
-            gnomad_stats = self._fetch_gnomad(chrom, pos, ref, alt)
+            gnomad_stats = self._fetch_gnomad(chrom, pos, ref, alt, dataset_id='gnomad_r4', version_label='v4.1')
             if gnomad_stats:
                 results['gnomad_v4'] = gnomad_stats
+
+        # Fallback: gnomAD v3 when v4 has no data
+        if chrom and pos and ref and alt:
+            v4_stats = results.get('gnomad_v4')
+            v4_has_data = v4_stats and (getattr(v4_stats, 'an', 0) or getattr(v4_stats, 'ac', 0))
+            if not v4_has_data:
+                gnomad_v3_stats = self._fetch_gnomad(chrom, pos, ref, alt, dataset_id='gnomad_r3', version_label='v3')
+                if gnomad_v3_stats:
+                    results['gnomad_v3'] = gnomad_v3_stats
         
         # Additional sources could be added here (ExAC, TOPMed, 1000G)
         
@@ -816,7 +831,9 @@ class PopulationAPIClient:
         chrom: str,
         pos: int,
         ref: str,
-        alt: str
+        alt: str,
+        dataset_id: str = 'gnomad_r4',
+        version_label: str = 'v4.1'
     ) -> Optional[PopulationStats]:
         """
         Fetch population frequency from gnomAD v4 GraphQL API.
@@ -826,11 +843,12 @@ class PopulationAPIClient:
         """
         from config.api_config import API_ENDPOINTS
         
-        legacy_cache_key = f"gnomad_pop_{chrom}_{pos}_{ref}_{alt}"
+        legacy_cache_key = f"gnomad_pop_{dataset_id}_{chrom}_{pos}_{ref}_{alt}"
         
         # Check validated cache first
         if self._use_validated_cache:
-            cached_data = self._get_cached_population_data('gnomAD_GraphQL', chrom, pos, ref, alt)
+            cache_source = f"gnomAD_GraphQL_{dataset_id}"
+            cached_data = self._get_cached_population_data(cache_source, chrom, pos, ref, alt)
             if cached_data:
                 # Reconstruct PopulationStats from cached data
                 if validate_population_stats(
@@ -847,8 +865,8 @@ class PopulationAPIClient:
                         hemizygote_count=cached_data.get('hemizygote_count'),
                         popmax_af=cached_data.get('popmax_af'),
                         popmax_population=cached_data.get('popmax_population'),
-                        source='gnomAD_GraphQL',
-                        version='v4.0_cached'
+                        source=cache_source,
+                        version=f"{version_label}_cached"
                     )
         elif legacy_cache_key in self.cache:
             return self.cache[legacy_cache_key]
@@ -872,7 +890,6 @@ class PopulationAPIClient:
                 id
                 ac
                 an
-                af
               }
             }
           }
@@ -882,17 +899,20 @@ class PopulationAPIClient:
         gnomad_variant_id = f"{chrom}-{pos}-{ref}-{alt}"
         variables = {
             'variantId': gnomad_variant_id,
-            'datasetId': 'gnomad_r4'
+            'datasetId': dataset_id
         }
         
         try:
-            print(f"{Fore.YELLOW}🔍 Querying gnomAD for population data: {chrom}:{pos}{ref}>{alt}...{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}🔍 Querying gnomAD ({dataset_id}) for population data: {chrom}:{pos}{ref}>{alt}...{Style.RESET_ALL}")
             
             response = requests.post(
                 API_ENDPOINTS.get('gnomad_graphql', 'https://gnomad.broadinstitute.org/api'),
                 json={'query': graphql_query, 'variables': variables},
                 timeout=self.timeout,
-                headers={'Content-Type': 'application/json'}
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'ACMG_Assistant/1.0'
+                }
             )
             
             if response.status_code == 200:
@@ -903,18 +923,18 @@ class PopulationAPIClient:
                 if not variant:
                     # Variant not found - return zero frequency
                     stats = PopulationStats(
-                        population='gnomad_v4',
+                        population='gnomad_v4' if dataset_id == 'gnomad_r4' else 'gnomad_v3',
                         af=0.0,
                         an=0,
                         ac=0,
-                        source='gnomAD_GraphQL',
-                        version='v4.0'
+                        source=f"gnomAD_GraphQL_{dataset_id}",
+                        version=version_label
                     )
                     
                     # Cache absent variant data
                     if self._use_validated_cache:
                         self._set_cached_population_data(
-                            'gnomAD_GraphQL', chrom, pos, ref, alt,
+                            f"gnomAD_GraphQL_{dataset_id}", chrom, pos, ref, alt,
                             {'af': 0.0, 'an': 0, 'ac': 0}
                         )
                     else:
@@ -930,16 +950,24 @@ class PopulationAPIClient:
                 subpop = {}
                 for pop in genome.get('populations', []):
                     pop_id = pop.get('id', 'unknown')
+                    pop_ac = pop.get('ac')
+                    pop_an = pop.get('an')
+                    pop_af = None
+                    if pop_ac is not None and pop_an:
+                        try:
+                            pop_af = pop_ac / pop_an
+                        except (TypeError, ZeroDivisionError):
+                            pop_af = None
                     subpop[pop_id] = {
-                        'af': pop.get('af'),
-                        'ac': pop.get('ac'),
-                        'an': pop.get('an')
+                        'af': pop_af,
+                        'ac': pop_ac,
+                        'an': pop_an
                     }
                 
                 faf95 = genome.get('faf95', {}) or {}
                 
                 stats = PopulationStats(
-                    population='gnomad_v4',
+                        population='gnomad_v4' if dataset_id == 'gnomad_r4' else 'gnomad_v3',
                     af=genome.get('af'),
                     an=genome.get('an'),
                     ac=genome.get('ac'),
@@ -949,8 +977,8 @@ class PopulationAPIClient:
                     popmax_af=faf95.get('popmax'),
                     popmax_population=faf95.get('popmax_population'),
                     filters=genome.get('filters'),
-                    source='gnomAD_GraphQL',
-                    version='v4.0',
+                        source=f"gnomAD_GraphQL_{dataset_id}",
+                        version=version_label,
                     raw=variant
                 )
                 
@@ -966,7 +994,7 @@ class PopulationAPIClient:
                         'popmax_population': stats.popmax_population,
                     }
                     self._set_cached_population_data(
-                        'gnomAD_GraphQL', chrom, pos, ref, alt, cache_data
+                        f"gnomAD_GraphQL_{dataset_id}", chrom, pos, ref, alt, cache_data
                     )
                 else:
                     self.cache[legacy_cache_key] = stats
@@ -978,6 +1006,11 @@ class PopulationAPIClient:
                     print(f"{Fore.GREEN}✅ gnomAD: Variant found, AF=0{Style.RESET_ALL}")
                 
                 return stats
+            else:
+                response_text = response.text[:500] if response.text else ""
+                print(
+                    f"{Fore.YELLOW}⚠️  gnomAD API returned status {response.status_code}: {response_text}{Style.RESET_ALL}"
+                )
                 
         except Exception as e:
             print(f"{Fore.RED}❌ gnomAD API error: {str(e)}{Style.RESET_ALL}")

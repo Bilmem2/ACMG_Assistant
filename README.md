@@ -262,9 +262,9 @@ Default: `src/api_cache/` (organized by category/source)
 
 ## Versioning & Changelog
 
-### Current Version: **v4.0.x**
+### Current Version: **v4.1.x**
 
-Latest Release: December 2025
+Latest Release: February 2026
 
 ### Major Changes in v4.0.0
 

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.0] - 2026-02-06
+
+### 🌟 Added
+- **Integration validation report**: JSON/Markdown report generation with reference dataset checks
+- **ENA metadata validation**: Optional ENA Browser API checks for accession metadata
+- **CLI flow test coverage**: End-to-end CLI flow with mocked inputs
+
+### 🔄 Changed
+- **Predictor and population enrichments**: Improved fallbacks and cache keying for dataset variants
+- **Report output**: Normalized applied criteria and expanded predictor/population sections
+- **Manual overrides**: Prefer manual population/predictor data when provided
+
+### ✅ Fixed
+- **External data fetch gating**: Ensure API fetch runs even when partial in silico data exists
+- **Applied criteria normalization**: Consistent structure for classification and report generation
+- **HGVS c. fallback**: Uses `cdna_change` when `hgvs_c` is missing
+- **gnomAD GraphQL schema**: Corrected AF calculation from AC/AN with v3 fallback
+- **CADD API handling**: Accept list responses without crashing
+- **AlphaMissense mapping**: Aligns with dbNSFP field naming
+
+### 📊 Test Coverage
+- Expanded unit, integration, and CLI coverage with a stabilized full-flow test
+
+---
+
 ## [3.5.0] - 2025-10-07
 
 ### 🌟 Added
