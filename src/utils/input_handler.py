@@ -1252,6 +1252,7 @@ class InputHandler:
         while True:
             try:
                 value = input(prompt).strip()
+                normalized_value = value
                 
                 # Handle empty input
                 if not value:
@@ -1264,10 +1265,14 @@ class InputHandler:
                 # Handle 'NA' input
                 if value.upper() in ['NA', 'N/A', 'NOT AVAILABLE']:
                     return None
+
+                # Accept locale-style decimals (e.g., 0,8) for float inputs.
+                if convert_type is float and ',' in value:
+                    normalized_value = value.replace(',', '.')
                 
                 # Validate input
                 if validator:
-                    if not validator(value):
+                    if not validator(normalized_value):
                         # Give specific error messages for common validators
                         if validator.__name__ == '_validate_position':
                             print("❌ Please enter a valid genomic position (positive integer, e.g., 41276045)")
@@ -1286,7 +1291,7 @@ class InputHandler:
                 # Convert type if specified
                 if convert_type:
                     try:
-                        value = convert_type(value)
+                        value = convert_type(normalized_value)
                     except ValueError:
                         print(f"❌ Invalid {convert_type.__name__} format. Please try again.")
                         continue

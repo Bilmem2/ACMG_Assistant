@@ -118,6 +118,8 @@ diagnostic_summary.txt
 variant_classification_report.txt
 test_input.txt
 test_results/
+artifacts/
+src/artifacts/
 
 # =============================================================================
 # Documentation (local drafts only)
@@ -151,6 +153,7 @@ erepo.oas2.yml
 test_interactive.py
 test_phase*.py
 test_missense_integration.py
+tests/test_realistic_curated_benchmark.py
 
 # =============================================================================
 # Media Files

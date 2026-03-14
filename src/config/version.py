@@ -8,10 +8,10 @@ License: MIT License
 
 # Version and metadata information
 VERSION_INFO = {
-    'version': '4.1.0',
+    'version': '4.1.1',
     'author': 'Can Sevilmiş',
     'license': 'MIT License',
-    'last_updated': 'February 6, 2026',
+    'last_updated': 'March 14, 2026',
     'guidelines': 'ACMG/AMP 2015 & 2023',
     'description': 'ACMG Variant Classification Assistant - Multi-Source API Integration with Validated Caching',
     'major_features': [
