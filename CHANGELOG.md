@@ -12,8 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✅ Fixed
 - **Interactive float parsing**: `input_handler` now accepts comma decimal inputs (e.g., `0,8`) and normalizes them to dot-decimal for score fields such as VEST4
 
-### 🔄 Changed
-- **Git tracking hygiene**: Added ignore rules for generated `artifacts/` outputs and curated benchmark artifact paths
 
 ## [4.1.0] - 2026-02-06
 
